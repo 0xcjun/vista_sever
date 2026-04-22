@@ -1,0 +1,13 @@
+{
+  "tenant": {
+    "user_hash": "u_local_dev",
+    "workspace_id": "EXP_LOCAL",
+    "workspace_kind": "research",
+    "run_id": "run-local-plan-0001",
+    "requested_at": "2026-04-22T10:00:00Z"
+  },
+  "payload": {
+    "user_input": "动量反转因子挖掘",
+    "interactive": false
+  }
+}
