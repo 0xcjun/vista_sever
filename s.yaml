@@ -1,0 +1,260 @@
+edition: 3.0.0
+name: vista-fc
+
+# access 在 ~/.s/access.yaml 里配置；按环境切：default / dev / dev-preflight / prod
+access: ${env.FC_ACCESS|default}
+
+vars:
+  region:           ${env.FC_REGION|cn-hangzhou}
+  accountId:        ${env.ALIYUN_ACCOUNT_ID}
+  ossBucket:        ${env.OSS_BUCKET|vista-fc-dev}
+  imageRegistry:    registry.${vars.region}.aliyuncs.com/vista/vista-fc-base
+  imageTag:         ${env.GIT_SHA|latest}
+  nasMountTarget:   ${env.NAS_MOUNT_TARGET}
+  vpcId:            ${env.VPC_ID}
+  vswitchId:        ${env.VSWITCH_ID}
+  securityGroupId:  ${env.SG_ID}
+  logProject:       ${env.LOG_PROJECT|vista-fc}
+  logStore:         ${env.LOG_STORE|handlers}
+  roleArn:          acs:ram::${vars.accountId}:role/fc-vista-role
+  fnfRoleArn:       acs:ram::${vars.accountId}:role/fnf-vista-role
+  functionSuffix:   ${env.FC_SUFFIX|""}
+
+# ── 小粒度可复用 anchor（v3 merge key 合法用法） ──────────────────────────
+common-vpc: &common-vpc
+  vpcId:            ${vars.vpcId}
+  vswitchIds:
+    - ${vars.vswitchId}
+  securityGroupId:  ${vars.securityGroupId}
+
+common-nas: &common-nas
+  userId:   10003
+  groupId:  10003
+  mountPoints:
+    - serverAddr: ${vars.nasMountTarget}
+      mountDir:   /mnt/vista-cache
+
+common-log: &common-log
+  project:  ${vars.logProject}
+  logstore: ${vars.logStore}
+  enableRequestMetrics: true
+
+common-env: &common-env
+  OSS_REGION:        ${vars.region}
+  OSS_BUCKET:        ${vars.ossBucket}
+  NAS_CACHE_ROOT:    /mnt/vista-cache
+  CLICKHOUSE_URL:    ${env.CLICKHOUSE_URL}
+  CLICKHOUSE_USER:   ${env.CLICKHOUSE_USER}
+  CLICKHOUSE_PASS:   ${env.CLICKHOUSE_PASS}
+  ANTHROPIC_API_KEY: ${env.ANTHROPIC_API_KEY|""}
+  LOG_FORMAT:        json
+  TZ:                Asia/Shanghai
+
+common-container: &common-container
+  image:   ${vars.imageRegistry}:${vars.imageTag}
+  command: ["python", "-m", "vista_fc.runtime.adapter"]
+  port:    9000
+
+resources:
+  factor-plan:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: factor-plan${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 660
+        memorySize: 2048
+        cpu: 1
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.factor_plan:handler"]
+
+  factor-builder:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: factor-builder${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 3660
+        memorySize: 8192
+        cpu: 2
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.factor_builder:handler"]
+
+  factor-detect:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: factor-detect${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 360
+        memorySize: 4096
+        cpu: 1
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.factor_detect:handler"]
+
+  factor-duplicate:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: factor-duplicate${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 1860
+        memorySize: 8192
+        cpu: 2
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.factor_duplicate:handler"]
+
+  factor-evaluate:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: factor-evaluate${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 3660
+        memorySize: 16384
+        cpu: 4
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.factor_evaluate:handler"]
+
+  factor-filter:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: factor-filter${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 360
+        memorySize: 4096
+        cpu: 1
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.factor_filter:handler"]
+
+  strategy-backtest:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: strategy-backtest${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 1860
+        memorySize: 8192
+        cpu: 2
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.strategy_backtest:handler"]
+
+  vista-realtime:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: vista-realtime${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 360
+        memorySize: 4096
+        cpu: 1
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.vista_realtime:handler"]
+      triggers:
+        - name: realtime-tick
+          type: timer
+          config:
+            cronExpression: "@every 1m"
+            enable: ${env.REALTIME_TRIGGER_ENABLE|false}
+            payload: |
+              {"tenant":{"user_hash":"<hash>","workspace_id":"FTS_XXX","workspace_kind":"realtime","run_id":"auto","requested_at":"1970-01-01T00:00:00Z"},"payload":{"strategy_toml_uri":"oss://vista-fc-dev/user_data/<hash>/realtime/FTS_XXX/strategy.toml","update_mode":"auto","push_targets":["default"]}}
+
+  research-pipeline-flow:
+    component: fnf
+    props:
+      region:     ${vars.region}
+      name:       research-pipeline${vars.functionSuffix}
+      type:       FDL
+      definition: ${file(./flows/research_pipeline.fdl)}
+      roleArn:    ${vars.fnfRoleArn}
+
+  backtest-fanout-flow:
+    component: fnf
+    props:
+      region:     ${vars.region}
+      name:       backtest-fanout${vars.functionSuffix}
+      type:       FDL
+      definition: ${file(./flows/backtest_fanout.fdl)}
+      roleArn:    ${vars.fnfRoleArn}
+
+  research-full-flow:
+    component: fnf
+    props:
+      region:     ${vars.region}
+      name:       research-full${vars.functionSuffix}
+      type:       FDL
+      definition: ${file(./flows/research_full.fdl)}
+      roleArn:    ${vars.fnfRoleArn}
