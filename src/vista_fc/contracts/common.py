@@ -6,11 +6,9 @@ Spec §5.1: TenantContext / EnvelopeIn / EnvelopeOut / ArtifactRef / ErrorInfo.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Generic, Literal, TypeVar
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-T = TypeVar("T", bound=BaseModel)
 
 
 class TenantContext(BaseModel):
@@ -62,7 +60,7 @@ class ErrorInfo(BaseModel):
     trace_id: str
 
 
-class EnvelopeIn(BaseModel, Generic[T]):
+class EnvelopeIn[T: BaseModel](BaseModel):
     """Input envelope: tenant context + function-specific payload."""
 
     model_config = ConfigDict(extra="forbid")
@@ -71,7 +69,7 @@ class EnvelopeIn(BaseModel, Generic[T]):
     payload: T
 
 
-class EnvelopeOut(BaseModel, Generic[T]):
+class EnvelopeOut[T: BaseModel](BaseModel):
     """Output envelope: status, artifacts, metrics, optional payload / error."""
 
     model_config = ConfigDict(extra="forbid")
