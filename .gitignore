@@ -205,4 +205,36 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-docs/superpowers/
+
+# vista-fc project
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+uv-build.log
+
+# serverless-devs
+.s/
+.serverless-devs/
+s.*.yaml.local
+
+# docker
+.docker-cache/
+
+# env
+.env
+.env.local
+.env.build
+.env.dev
+.env.prod
+
+# plans are intentionally local; specs get committed
+docs/superpowers/plans/
+
+# fixture binaries (should be in git-lfs when needed)
+tests/fixtures/duckdb/*.duckdb
+tests/fixtures/parquet/*.parquet
+
+# macOS
+.DS_Store
