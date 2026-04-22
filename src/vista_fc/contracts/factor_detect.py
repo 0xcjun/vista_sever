@@ -1,0 +1,29 @@
+"""DTO for factor-detect function.
+
+Wraps `vista.utils.factor_detect.factor_detect` which checks 未来数据 /
+逐品种方差 / 增量一致性 on the given factors.duckdb.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from vista_fc.contracts.common import ArtifactRef
+
+
+class FactorDetectInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    factors_db_uri: str
+    problems_map_uri: str | None = None
+    max_workers: int = Field(default=4, ge=1, le=32)
+    timeout: int = Field(default=60, ge=1, le=3600)
+
+
+class FactorDetectOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total_factors: int = Field(ge=0)
+    passed: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    report_artifact: ArtifactRef
