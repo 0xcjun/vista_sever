@@ -3,11 +3,11 @@ name = "vista-fc"
 version = "0.1.0"
 description = "Aliyun Function Compute wrapper for vista workflows"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.12,<3.13"
 
 dependencies = [
-    # 业务核心 — 来自私有源 zbczsc-dev；若本地无 token 取消注释后 uv sync 会失败
-    # "vista==3.1.1.260418",
+    # 业务核心 — 本地源码路径安装（见 [tool.uv.sources].vista）
+    "vista",
     # 数据与契约
     "pydantic>=2.6.0",
     "polars>=1.0.0",
@@ -19,6 +19,9 @@ dependencies = [
     "loguru>=0.7.0",
     "tomlkit>=0.13.0",
     "python-dotenv>=1.0.0",
+    "agno>=2.1.3",
+    "claude-agent-sdk>=0.1.18,<0.1.49",
+    "anthropic>=0.96.0",
 ]
 
 [dependency-groups]
@@ -59,12 +62,14 @@ url = "https://pypi.zbczsc.com/team/dev/+simple/"
 explicit = true
 
 [tool.uv.sources]
-vista = { index = "zbczsc-dev" }
+# 本地开发：vista 从源码目录 editable 安装，传递依赖 (chan-factor-rs / chanfactor /
+# wbt / czsc) 会从 zbczsc-dev 私有源拉取——本机已缓存，无 token 也能解析。
+vista = { path = "../../cursorPro/vista", editable = true }
 
 # ── ruff ─────────────────────────────────────────────────────────────────────
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 src = ["src", "handlers", "tests"]
 extend-exclude = [".venv", "build", "dist"]
 
@@ -80,7 +85,7 @@ known-first-party = ["vista_fc", "handlers"]
 
 # ── basedpyright ─────────────────────────────────────────────────────────────
 [tool.basedpyright]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["src", "handlers", "tests"]
 exclude = ["**/__pycache__", ".venv", "build", "dist"]
