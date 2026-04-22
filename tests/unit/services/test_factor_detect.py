@@ -26,11 +26,18 @@ def test_detect_happy_path(
     db_local.write_bytes(b"duck")
     workspace_mock.pull_to_tmp.return_value = (db_local, '"etag-1"')
 
+    # Match vista's FactorDetectBatchReport field names exactly — this is the
+    # real contract the service parses. `failed + errored` sum maps to our `failed`.
     mock_report = MagicMock()
     mock_report.model_dump.return_value = {
-        "total_factors": 100,
+        "total": 100,
+        "pending": 100,
+        "skipped_unsupported": 0,
         "passed": 95,
-        "failed": 5,
+        "failed": 4,
+        "errored": 1,
+        "failure_breakdown": {},
+        "elapsed_seconds": 1.23,
     }
     patched_vista_detect.return_value = mock_report
 

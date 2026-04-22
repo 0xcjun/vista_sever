@@ -69,10 +69,12 @@ def factor_detect_service(
         kind="report_json",
     )
 
+    # vista's FactorDetectBatchReport uses `total` not `total_factors`;
+    # we fall back to `total_factors` in case the report shape ever changes.
     return FactorDetectOutput(
-        total_factors=int(report_dict.get("total_factors", 0)),
+        total_factors=int(report_dict.get("total", report_dict.get("total_factors", 0))),
         passed=int(report_dict.get("passed", 0)),
-        failed=int(report_dict.get("failed", 0)),
+        failed=int(report_dict.get("failed", 0)) + int(report_dict.get("errored", 0)),
         report_artifact=artifact,
     )
 
