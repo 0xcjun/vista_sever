@@ -1,0 +1,1294 @@
+# serializer version: 1
+# name: test_dto_schema_snapshot[FactorBuilderInput][FactorBuilderInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'batch_size': dict({
+        'default': 5,
+        'maximum': 100,
+        'minimum': 1,
+        'title': 'Batch Size',
+        'type': 'integer',
+      }),
+      'factor_numbers': dict({
+        'default': 20,
+        'maximum': 10000,
+        'minimum': 1,
+        'title': 'Factor Numbers',
+        'type': 'integer',
+      }),
+      'max_retries': dict({
+        'default': 3,
+        'maximum': 20,
+        'minimum': 0,
+        'title': 'Max Retries',
+        'type': 'integer',
+      }),
+      'max_workers': dict({
+        'default': 1,
+        'maximum': 32,
+        'minimum': 1,
+        'title': 'Max Workers',
+        'type': 'integer',
+      }),
+      'model': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Model',
+      }),
+      'multi_turn': dict({
+        'default': False,
+        'title': 'Multi Turn',
+        'type': 'boolean',
+      }),
+      'route_code': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Route Code',
+      }),
+      'routes_toml_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Routes Toml Uri',
+      }),
+    }),
+    'title': 'FactorBuilderInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorBuilderOutput][FactorBuilderOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+      'RouteBuildStat': dict({
+        'additionalProperties': False,
+        'properties': dict({
+          'factor_count': dict({
+            'minimum': 0,
+            'title': 'Factor Count',
+            'type': 'integer',
+          }),
+          'route_code': dict({
+            'title': 'Route Code',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'route_code',
+          'factor_count',
+        ]),
+        'title': 'RouteBuildStat',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'factors_db_artifact': dict({
+        '$ref': '#/$defs/ArtifactRef',
+      }),
+      'per_route': dict({
+        'items': dict({
+          '$ref': '#/$defs/RouteBuildStat',
+        }),
+        'title': 'Per Route',
+        'type': 'array',
+      }),
+      'total_factors': dict({
+        'minimum': 0,
+        'title': 'Total Factors',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'total_factors',
+      'per_route',
+      'factors_db_artifact',
+    ]),
+    'title': 'FactorBuilderOutput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorDetectInput][FactorDetectInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'factors_db_uri': dict({
+        'title': 'Factors Db Uri',
+        'type': 'string',
+      }),
+      'max_workers': dict({
+        'default': 4,
+        'maximum': 32,
+        'minimum': 1,
+        'title': 'Max Workers',
+        'type': 'integer',
+      }),
+      'problems_map_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Problems Map Uri',
+      }),
+      'timeout': dict({
+        'default': 60,
+        'maximum': 3600,
+        'minimum': 1,
+        'title': 'Timeout',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'factors_db_uri',
+    ]),
+    'title': 'FactorDetectInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorDetectOutput][FactorDetectOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'failed': dict({
+        'minimum': 0,
+        'title': 'Failed',
+        'type': 'integer',
+      }),
+      'passed': dict({
+        'minimum': 0,
+        'title': 'Passed',
+        'type': 'integer',
+      }),
+      'report_artifact': dict({
+        '$ref': '#/$defs/ArtifactRef',
+      }),
+      'total_factors': dict({
+        'minimum': 0,
+        'title': 'Total Factors',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'total_factors',
+      'passed',
+      'failed',
+      'report_artifact',
+    ]),
+    'title': 'FactorDetectOutput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorDuplicateInput][FactorDuplicateInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'factors_db_uri': dict({
+        'title': 'Factors Db Uri',
+        'type': 'string',
+      }),
+      'max_workers': dict({
+        'default': 4,
+        'maximum': 32,
+        'minimum': 1,
+        'title': 'Max Workers',
+        'type': 'integer',
+      }),
+      'model_config_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Model Config Uri',
+      }),
+      'problem_codes': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'minItems': 1,
+        'title': 'Problem Codes',
+        'type': 'array',
+      }),
+      'route_codes': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'minItems': 1,
+        'title': 'Route Codes',
+        'type': 'array',
+      }),
+      'threshold': dict({
+        'default': 0.8,
+        'maximum': 1.0,
+        'minimum': 0.0,
+        'title': 'Threshold',
+        'type': 'number',
+      }),
+      'timeout': dict({
+        'default': 60,
+        'maximum': 3600,
+        'minimum': 1,
+        'title': 'Timeout',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'factors_db_uri',
+      'route_codes',
+      'problem_codes',
+    ]),
+    'title': 'FactorDuplicateInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorDuplicateOutput][FactorDuplicateOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'dropped': dict({
+        'minimum': 0,
+        'title': 'Dropped',
+        'type': 'integer',
+      }),
+      'kept': dict({
+        'minimum': 0,
+        'title': 'Kept',
+        'type': 'integer',
+      }),
+      'report_artifact': dict({
+        '$ref': '#/$defs/ArtifactRef',
+      }),
+      'total_checked': dict({
+        'minimum': 0,
+        'title': 'Total Checked',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'total_checked',
+      'dropped',
+      'kept',
+      'report_artifact',
+    ]),
+    'title': 'FactorDuplicateOutput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorEvaluateInput][FactorEvaluateInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'factors_db_uri': dict({
+        'title': 'Factors Db Uri',
+        'type': 'string',
+      }),
+      'fee_rate': dict({
+        'default': 0.0,
+        'maximum': 0.1,
+        'minimum': 0.0,
+        'title': 'Fee Rate',
+        'type': 'number',
+      }),
+      'max_workers': dict({
+        'default': 4,
+        'maximum': 32,
+        'minimum': 1,
+        'title': 'Max Workers',
+        'type': 'integer',
+      }),
+      'models': dict({
+        'anyOf': list([
+          dict({
+            'items': dict({
+              'type': 'string',
+            }),
+            'type': 'array',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Models',
+      }),
+      'models_config_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Models Config Uri',
+      }),
+      'problem_codes': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'minItems': 1,
+        'title': 'Problem Codes',
+        'type': 'array',
+      }),
+      'retry_failed': dict({
+        'default': False,
+        'title': 'Retry Failed',
+        'type': 'boolean',
+      }),
+      'route_codes': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'minItems': 1,
+        'title': 'Route Codes',
+        'type': 'array',
+      }),
+      'timeout': dict({
+        'default': 60,
+        'maximum': 3600,
+        'minimum': 1,
+        'title': 'Timeout',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'factors_db_uri',
+      'route_codes',
+      'problem_codes',
+    ]),
+    'title': 'FactorEvaluateInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorEvaluateOutput][FactorEvaluateOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'failed': dict({
+        'minimum': 0,
+        'title': 'Failed',
+        'type': 'integer',
+      }),
+      'report_artifact': dict({
+        '$ref': '#/$defs/ArtifactRef',
+      }),
+      'succeeded': dict({
+        'minimum': 0,
+        'title': 'Succeeded',
+        'type': 'integer',
+      }),
+      'total_evaluations': dict({
+        'minimum': 0,
+        'title': 'Total Evaluations',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'total_evaluations',
+      'succeeded',
+      'failed',
+      'report_artifact',
+    ]),
+    'title': 'FactorEvaluateOutput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorFilterInput][FactorFilterInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'author': dict({
+        'default': '',
+        'title': 'Author',
+        'type': 'string',
+      }),
+      'creator': dict({
+        'default': 'factor_evaluate',
+        'title': 'Creator',
+        'type': 'string',
+      }),
+      'evaluate_methods': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Evaluate Methods',
+        'type': 'array',
+      }),
+      'factors_db_uri': dict({
+        'title': 'Factors Db Uri',
+        'type': 'string',
+      }),
+      'filter_methods': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Filter Methods',
+        'type': 'array',
+      }),
+      'metric_keys': dict({
+        'anyOf': list([
+          dict({
+            'items': dict({
+              'type': 'string',
+            }),
+            'type': 'array',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Metric Keys',
+      }),
+      'n': dict({
+        'default': 20,
+        'maximum': 1000,
+        'minimum': 1,
+        'title': 'N',
+        'type': 'integer',
+      }),
+      'outsample_sdt': dict({
+        'default': '20250101',
+        'title': 'Outsample Sdt',
+        'type': 'string',
+      }),
+      'positive_extractor': dict({
+        'default': 'ratio_across_problems',
+        'title': 'Positive Extractor',
+        'type': 'string',
+      }),
+      'positive_metric': dict({
+        'default': '绝对收益',
+        'title': 'Positive Metric',
+        'type': 'string',
+      }),
+      'positive_threshold': dict({
+        'default': 0.618,
+        'maximum': 1.0,
+        'minimum': 0.0,
+        'title': 'Positive Threshold',
+        'type': 'number',
+      }),
+      'problem_codes': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Problem Codes',
+        'type': 'array',
+      }),
+      'route_codes': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Route Codes',
+        'type': 'array',
+      }),
+    }),
+    'required': list([
+      'factors_db_uri',
+    ]),
+    'title': 'FactorFilterInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorFilterOutput][FactorFilterOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'toml_artifacts': dict({
+        'items': dict({
+          '$ref': '#/$defs/ArtifactRef',
+        }),
+        'title': 'Toml Artifacts',
+        'type': 'array',
+      }),
+      'toml_count': dict({
+        'minimum': 0,
+        'title': 'Toml Count',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'toml_artifacts',
+      'toml_count',
+    ]),
+    'title': 'FactorFilterOutput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorPlanInput][FactorPlanInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'interactive': dict({
+        'default': False,
+        'title': 'Interactive',
+        'type': 'boolean',
+      }),
+      'model': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Model',
+      }),
+      'skill_path': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Skill Path',
+      }),
+      'user_input': dict({
+        'description': '交易想法 / 市场现象自由文本',
+        'minLength': 1,
+        'title': 'User Input',
+        'type': 'string',
+      }),
+    }),
+    'required': list([
+      'user_input',
+    ]),
+    'title': 'FactorPlanInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[FactorPlanOutput][FactorPlanOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+      'FactorRouteSummary': dict({
+        'additionalProperties': False,
+        'properties': dict({
+          'code': dict({
+            'title': 'Code',
+            'type': 'string',
+          }),
+          'compute_engine': dict({
+            'title': 'Compute Engine',
+            'type': 'string',
+          }),
+          'description': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Description',
+          }),
+          'name': dict({
+            'title': 'Name',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'code',
+          'name',
+          'compute_engine',
+        ]),
+        'title': 'FactorRouteSummary',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'routes': dict({
+        'items': dict({
+          '$ref': '#/$defs/FactorRouteSummary',
+        }),
+        'title': 'Routes',
+        'type': 'array',
+      }),
+      'routes_toml_artifact': dict({
+        '$ref': '#/$defs/ArtifactRef',
+      }),
+    }),
+    'required': list([
+      'routes',
+      'routes_toml_artifact',
+    ]),
+    'title': 'FactorPlanOutput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[StrategyBacktestInput][StrategyBacktestInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'data_mode': dict({
+        'default': 'total',
+        'enum': list([
+          'train',
+          'valid',
+          'total',
+        ]),
+        'title': 'Data Mode',
+        'type': 'string',
+      }),
+      'digits': dict({
+        'default': 2,
+        'maximum': 10,
+        'minimum': 0,
+        'title': 'Digits',
+        'type': 'integer',
+      }),
+      'fee_rate': dict({
+        'default': 0.0,
+        'maximum': 0.1,
+        'minimum': 0.0,
+        'title': 'Fee Rate',
+        'type': 'number',
+      }),
+      'max_workers': dict({
+        'default': 1,
+        'maximum': 32,
+        'minimum': 1,
+        'title': 'Max Workers',
+        'type': 'integer',
+      }),
+      'mode': dict({
+        'enum': list([
+          'research',
+          'realtime',
+        ]),
+        'title': 'Mode',
+        'type': 'string',
+      }),
+      'n_jobs': dict({
+        'default': 1,
+        'maximum': 32,
+        'minimum': 1,
+        'title': 'N Jobs',
+        'type': 'integer',
+      }),
+      'strategy_toml_uri': dict({
+        'title': 'Strategy Toml Uri',
+        'type': 'string',
+      }),
+      'yearly_days': dict({
+        'default': 252,
+        'maximum': 366,
+        'minimum': 1,
+        'title': 'Yearly Days',
+        'type': 'integer',
+      }),
+    }),
+    'required': list([
+      'strategy_toml_uri',
+      'mode',
+    ]),
+    'title': 'StrategyBacktestInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[StrategyBacktestOutput][StrategyBacktestOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'artifacts': dict({
+        'additionalProperties': dict({
+          '$ref': '#/$defs/ArtifactRef',
+        }),
+        'title': 'Artifacts',
+        'type': 'object',
+      }),
+      'elapsed_s': dict({
+        'minimum': 0.0,
+        'title': 'Elapsed S',
+        'type': 'number',
+      }),
+      'strategy': dict({
+        'title': 'Strategy',
+        'type': 'string',
+      }),
+    }),
+    'required': list([
+      'strategy',
+      'elapsed_s',
+      'artifacts',
+    ]),
+    'title': 'StrategyBacktestOutput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[VistaRealtimeInput][VistaRealtimeInput]
+  dict({
+    'additionalProperties': False,
+    'properties': dict({
+      'push_targets': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Push Targets',
+        'type': 'array',
+      }),
+      'strategy_toml_uri': dict({
+        'title': 'Strategy Toml Uri',
+        'type': 'string',
+      }),
+      'update_mode': dict({
+        'default': 'auto',
+        'enum': list([
+          'auto',
+          'full',
+          'incremental',
+        ]),
+        'title': 'Update Mode',
+        'type': 'string',
+      }),
+    }),
+    'required': list([
+      'strategy_toml_uri',
+    ]),
+    'title': 'VistaRealtimeInput',
+    'type': 'object',
+  })
+# ---
+# name: test_dto_schema_snapshot[VistaRealtimeOutput][VistaRealtimeOutput]
+  dict({
+    '$defs': dict({
+      'ArtifactRef': dict({
+        'additionalProperties': False,
+        'description': 'Pointer to a persisted artifact (OSS).',
+        'properties': dict({
+          'kind': dict({
+            'enum': list([
+              'duckdb',
+              'toml',
+              'parquet',
+              'feather',
+              'report_json',
+              'model',
+              'log',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'oss_uri': dict({
+            'title': 'Oss Uri',
+            'type': 'string',
+          }),
+          'sha256': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Sha256',
+          }),
+          'size_bytes': dict({
+            'minimum': 0,
+            'title': 'Size Bytes',
+            'type': 'integer',
+          }),
+        }),
+        'required': list([
+          'kind',
+          'oss_uri',
+          'size_bytes',
+        ]),
+        'title': 'ArtifactRef',
+        'type': 'object',
+      }),
+      'SummaryData': dict({
+        'additionalProperties': False,
+        'properties': dict({
+          'factor_count': dict({
+            'minimum': 0,
+            'title': 'Factor Count',
+            'type': 'integer',
+          }),
+          'failed_factor_count': dict({
+            'minimum': 0,
+            'title': 'Failed Factor Count',
+            'type': 'integer',
+          }),
+          'latest_dt': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'title': 'Latest Dt',
+          }),
+          'strategy': dict({
+            'title': 'Strategy',
+            'type': 'string',
+          }),
+          'success_factor_count': dict({
+            'minimum': 0,
+            'title': 'Success Factor Count',
+            'type': 'integer',
+          }),
+          'symbols': dict({
+            'items': dict({
+              'type': 'string',
+            }),
+            'title': 'Symbols',
+            'type': 'array',
+          }),
+        }),
+        'required': list([
+          'strategy',
+          'latest_dt',
+          'symbols',
+          'factor_count',
+          'success_factor_count',
+          'failed_factor_count',
+        ]),
+        'title': 'SummaryData',
+        'type': 'object',
+      }),
+      'TimingEntry': dict({
+        'additionalProperties': False,
+        'properties': dict({
+          'elapsed_seconds': dict({
+            'minimum': 0.0,
+            'title': 'Elapsed Seconds',
+            'type': 'number',
+          }),
+          'stage': dict({
+            'title': 'Stage',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'stage',
+          'elapsed_seconds',
+        ]),
+        'title': 'TimingEntry',
+        'type': 'object',
+      }),
+    }),
+    'additionalProperties': False,
+    'properties': dict({
+      'latest_dt': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'title': 'Latest Dt',
+      }),
+      'summary': dict({
+        '$ref': '#/$defs/SummaryData',
+      }),
+      'timing': dict({
+        'items': dict({
+          '$ref': '#/$defs/TimingEntry',
+        }),
+        'title': 'Timing',
+        'type': 'array',
+      }),
+      'weights_artifact': dict({
+        'anyOf': list([
+          dict({
+            '$ref': '#/$defs/ArtifactRef',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+      }),
+    }),
+    'required': list([
+      'summary',
+      'latest_dt',
+    ]),
+    'title': 'VistaRealtimeOutput',
+    'type': 'object',
+  })
+# ---
