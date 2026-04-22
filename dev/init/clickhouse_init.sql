@@ -16,6 +16,4 @@ CREATE TABLE IF NOT EXISTS vista.klines_mini
 ENGINE = MergeTree
 ORDER BY (symbol, dt);
 
-INSERT INTO vista.klines_mini VALUES
-    (now(), 'SFIF9001.CFE', 4000.0, 4010.0, 3990.0, 4005.0, 100, 400000),
-    (now() - INTERVAL 1 MINUTE, 'SFIF9001.CFE', 3998.0, 4005.0, 3995.0, 4000.0, 80, 320000);
+INSERT INTO vista.klines_mini VALUES (now(), 'SFIF9001.CFE', 4000.0, 4010.0, 3990.0, 4005.0, 100, 400000);
