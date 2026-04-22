@@ -1,0 +1,225 @@
+version: v1
+type: flow
+name: research-pipeline
+
+# Input shape:
+# {
+#   "tenant": {...TenantContext...},
+#   "user_input": "...",
+#   "plan_model": "claude-opus-4-7",
+#   "build_model": null,
+#   "factor_numbers": 20,
+#   "batch_size": 5,
+#   "build_workers": 1,
+#   "detect_workers": 4,
+#   "dup_workers": 4,
+#   "eval_workers": 4,
+#   "route_codes": ["R001","R002"],
+#   "problem_codes": ["P001"],
+#   "eval_models": ["MA001","CSSorting_equal"],
+#   "fee_rate": 0.0,
+#   "evaluate_methods": [],
+#   "filter_methods": [],
+#   "positive_extractor": "ratio_across_problems",
+#   "top_n": 20,
+#   "author": "",
+#   "outsample_sdt": "20250101"
+# }
+
+steps:
+  - type: task
+    name: factor_plan
+    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-plan"
+    pattern: waitForCallback=false
+    inputMappings:
+      - target: tenant
+        source: $.tenant
+      - target: payload
+        source: |
+          {
+            "user_input":  $.user_input,
+            "interactive": false,
+            "model":       $.plan_model,
+            "skill_path":  null
+          }
+    outputMappings:
+      - target: $.plan_out
+        source: $
+    retry:
+      - errors: ["VISTA_LLM_RATE_LIMIT", "OSS_READ_FAIL", "OSS_WRITE_FAIL"]
+        intervalSeconds: 5
+        maxAttempts: 5
+        multiplier: 2.0
+      - errors: ["VISTA_LOGIC_ERROR", "INPUT_VALIDATION"]
+        maxAttempts: 0
+    catch:
+      - errors: ["*"]
+        goto: abort
+    timeoutSeconds: 600
+
+  - type: task
+    name: factor_builder
+    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-builder"
+    inputMappings:
+      - target: tenant
+        source: $.tenant
+      - target: payload
+        source: |
+          {
+            "routes_toml_uri": $.plan_out.payload.routes_toml_artifact.oss_uri,
+            "factor_numbers":  $.factor_numbers,
+            "batch_size":      $.batch_size,
+            "max_workers":     $.build_workers,
+            "multi_turn":      false,
+            "model":           $.build_model
+          }
+    outputMappings:
+      - target: $.build_out
+        source: $
+    retry:
+      - errors: ["VISTA_LLM_RATE_LIMIT", "OSS_READ_FAIL", "OSS_WRITE_FAIL", "CLICKHOUSE_CONNECT", "OSS_ETAG_CONFLICT"]
+        intervalSeconds: 10
+        maxAttempts: 5
+        multiplier: 2.0
+      - errors: ["VISTA_LOGIC_ERROR"]
+        maxAttempts: 0
+    catch:
+      - errors: ["*"]
+        goto: abort
+    timeoutSeconds: 3600
+
+  - type: task
+    name: factor_detect
+    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-detect"
+    inputMappings:
+      - target: tenant
+        source: $.tenant
+      - target: payload
+        source: |
+          {
+            "factors_db_uri": $.build_out.payload.factors_db_artifact.oss_uri,
+            "max_workers":    $.detect_workers,
+            "timeout":        60
+          }
+    outputMappings:
+      - target: $.detect_out
+        source: $
+    retry:
+      - errors: ["OSS_READ_FAIL", "OSS_WRITE_FAIL", "CLICKHOUSE_CONNECT"]
+        intervalSeconds: 5
+        maxAttempts: 3
+      - errors: ["VISTA_LOGIC_ERROR"]
+        maxAttempts: 0
+    catch:
+      - errors: ["*"]
+        goto: abort
+    timeoutSeconds: 300
+
+  - type: task
+    name: factor_duplicate
+    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-duplicate"
+    inputMappings:
+      - target: tenant
+        source: $.tenant
+      - target: payload
+        source: |
+          {
+            "factors_db_uri": $.build_out.payload.factors_db_artifact.oss_uri,
+            "route_codes":    $.route_codes,
+            "problem_codes":  $.problem_codes,
+            "threshold":      0.8,
+            "max_workers":    $.dup_workers
+          }
+    outputMappings:
+      - target: $.dup_out
+        source: $
+    retry:
+      - errors: ["OSS_READ_FAIL", "OSS_WRITE_FAIL", "CLICKHOUSE_CONNECT", "OSS_ETAG_CONFLICT"]
+        intervalSeconds: 10
+        maxAttempts: 5
+        multiplier: 2.0
+      - errors: ["VISTA_LOGIC_ERROR"]
+        maxAttempts: 0
+    catch:
+      - errors: ["*"]
+        goto: abort
+    timeoutSeconds: 1800
+
+  - type: task
+    name: factor_evaluate
+    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-evaluate"
+    inputMappings:
+      - target: tenant
+        source: $.tenant
+      - target: payload
+        source: |
+          {
+            "factors_db_uri": $.build_out.payload.factors_db_artifact.oss_uri,
+            "route_codes":    $.route_codes,
+            "problem_codes": $.problem_codes,
+            "models":         $.eval_models,
+            "fee_rate":       $.fee_rate,
+            "max_workers":    $.eval_workers
+          }
+    outputMappings:
+      - target: $.eval_out
+        source: $
+    retry:
+      - errors: ["OSS_READ_FAIL", "OSS_WRITE_FAIL", "CLICKHOUSE_CONNECT", "OSS_ETAG_CONFLICT"]
+        intervalSeconds: 10
+        maxAttempts: 5
+        multiplier: 2.0
+      - errors: ["VISTA_LOGIC_ERROR"]
+        maxAttempts: 0
+    catch:
+      - errors: ["*"]
+        goto: abort
+    timeoutSeconds: 3600
+
+  - type: task
+    name: factor_filter
+    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-filter"
+    inputMappings:
+      - target: tenant
+        source: $.tenant
+      - target: payload
+        source: |
+          {
+            "factors_db_uri":     $.build_out.payload.factors_db_artifact.oss_uri,
+            "problem_codes":      $.problem_codes,
+            "route_codes":        $.route_codes,
+            "evaluate_methods":   $.evaluate_methods,
+            "filter_methods":     $.filter_methods,
+            "positive_extractor": $.positive_extractor,
+            "positive_metric":    "绝对收益",
+            "positive_threshold": 0.618,
+            "n":                  $.top_n,
+            "author":             $.author,
+            "outsample_sdt":      $.outsample_sdt
+          }
+    outputMappings:
+      - target: $.filter_out
+        source: $
+    retry:
+      - errors: ["OSS_READ_FAIL", "OSS_WRITE_FAIL"]
+        intervalSeconds: 5
+        maxAttempts: 3
+      - errors: ["VISTA_LOGIC_ERROR"]
+        maxAttempts: 0
+    catch:
+      - errors: ["*"]
+        goto: abort
+    timeoutSeconds: 300
+
+  - type: succeed
+    name: done
+    outputMappings:
+      - target: $.tenant
+        source: $.tenant
+      - target: $.strategy_tomls
+        source: $.filter_out.payload.toml_artifacts
+
+  - type: fail
+    name: abort
+    errorCode: "$.error.code"
+    errorMessage: "$.error.message"
