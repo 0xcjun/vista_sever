@@ -62,8 +62,10 @@ url = "https://pypi.zbczsc.com/team/dev/+simple/"
 explicit = true
 
 [tool.uv.sources]
-# 本地开发：vista 从源码目录 editable 安装，传递依赖 (chan-factor-rs / chanfactor /
-# wbt / czsc) 会从 zbczsc-dev 私有源拉取——本机已缓存，无 token 也能解析。
+# 本地开发：vista 从源码目录 editable 安装；传递私有依赖 (chan-factor-rs / chanfactor /
+# wbt / czsc) 已经解析到本地 aliyun/darwin wheel 缓存中。
+# 构建 docker 镜像需要 linux 版 chan-factor-rs wheel（仅存 zbczsc-dev 私有源），
+# 受限于 token 可用性；见 docs/RUNBOOK.md "Current blockers"。
 vista = { path = "../../cursorPro/vista", editable = true }
 
 # ── ruff ─────────────────────────────────────────────────────────────────────
