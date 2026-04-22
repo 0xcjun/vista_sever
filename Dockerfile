@@ -21,8 +21,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Copy lock + manifest first to maximise layer cache
-COPY pyproject.toml uv.lock ./
+# Copy lock + manifest + README (hatchling reads README.md for wheel metadata)
+COPY pyproject.toml uv.lock README.md ./
 
 # Install deps only (no project) — secret-mount for private index token.
 # Expected .env.build contents (loaded via `set -a . ... set +a`):
