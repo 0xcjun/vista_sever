@@ -1,0 +1,205 @@
+# Deploy jobs require Aliyun creds configured in GitHub secrets; integration
+# tests with `s local invoke` require solving the docker-vista packaging story
+# first (see docs/RUNBOOK.md "Current blockers").  Until the dev image can be
+# built in CI, the integration job runs only the python-mocked tests
+# (`-m "not s_local"`).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FC_REGION: cn-hangzhou
+  IMAGE_REGISTRY: registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --dev
+      - run: uv run ruff check
+      - run: uv run basedpyright
+      - run: uv run python scripts/validate_flow.py
+      - run: uv run pytest tests/unit/contracts/test_schema_snapshot.py
+
+  unit:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --dev
+      - run: uv run pytest tests/unit --cov --cov-fail-under=80
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: htmlcov/
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [unit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --dev
+      # The `s local invoke` tests (marker: s_local) need a docker image that
+      # bundles vista. Until the editable path dep is resolved for container
+      # builds, only the mocked-chain tests run here.
+      - name: Run integration tests (mocked-chain only)
+        run: uv run pytest tests/integration -m "not s_local"
+
+  build-push:
+    runs-on: ubuntu-latest
+    needs: [integration]
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      image_tag: ${{ steps.set.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: ACR login
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ACR_USER }}
+          password: ${{ secrets.ACR_PASS }}
+      - id: set
+        run: echo "tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Build & push (multi-arch)
+        env:
+          GIT_SHA: ${{ steps.set.outputs.tag }}
+          ACR_USER: ${{ secrets.ACR_USER }}
+          ACR_PASS: ${{ secrets.ACR_PASS }}
+          UV_INDEX_ZBCZSC_DEV_USERNAME: ${{ secrets.ZBCZSC_DEV_USER }}
+          UV_INDEX_ZBCZSC_DEV_PASSWORD: ${{ secrets.ZBCZSC_DEV_TOKEN }}
+        run: |
+          cat > .env.build <<EOF
+          UV_INDEX_ZBCZSC_DEV_USERNAME=$UV_INDEX_ZBCZSC_DEV_USERNAME
+          UV_INDEX_ZBCZSC_DEV_PASSWORD=$UV_INDEX_ZBCZSC_DEV_PASSWORD
+          EOF
+          scripts/push_image.sh
+
+  preflight:
+    runs-on: ubuntu-latest
+    needs: [build-push]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install serverless-devs
+        run: npm install -g @serverless-devs/s
+      - name: Configure s access
+        env:
+          ALIYUN_AK_ID: ${{ secrets.ALIYUN_DEV_PREFLIGHT_AK_ID }}
+          ALIYUN_AK_SECRET: ${{ secrets.ALIYUN_DEV_PREFLIGHT_AK_SECRET }}
+          ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+        run: |
+          mkdir -p ~/.s
+          cat > ~/.s/access.yaml <<EOF
+          dev-preflight:
+            AccountID: '$ALIYUN_ACCOUNT_ID'
+            AccessKeyID: $ALIYUN_AK_ID
+            AccessKeySecret: $ALIYUN_AK_SECRET
+          EOF
+      - name: Run preflight
+        env:
+          GIT_SHA: ${{ needs.build-push.outputs.image_tag }}
+          FC_SUFFIX: "-preflight-${{ needs.build-push.outputs.image_tag }}"
+          FC_ACCESS: dev-preflight
+          OSS_BUCKET: vista-fc-preflight
+          OSS_ACCESS_KEY_ID: ${{ secrets.ALIYUN_DEV_PREFLIGHT_AK_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_DEV_PREFLIGHT_AK_SECRET }}
+          ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+          VPC_ID: ${{ secrets.VPC_ID }}
+          VSWITCH_ID: ${{ secrets.VSWITCH_ID }}
+          SG_ID: ${{ secrets.SG_ID }}
+          NAS_MOUNT_TARGET: ${{ secrets.NAS_MOUNT_TARGET }}
+          CLICKHOUSE_URL: ${{ secrets.CLICKHOUSE_URL }}
+          CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER }}
+          CLICKHOUSE_PASS: ${{ secrets.CLICKHOUSE_PASS }}
+        run: bash tests/deploy_preflight/run_all.sh
+
+  deploy-dev:
+    runs-on: ubuntu-latest
+    needs: [preflight]
+    if: github.ref == 'refs/heads/main'
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install serverless-devs
+        run: npm install -g @serverless-devs/s
+      - name: Configure s access
+        env:
+          ALIYUN_AK_ID: ${{ secrets.ALIYUN_DEV_AK_ID }}
+          ALIYUN_AK_SECRET: ${{ secrets.ALIYUN_DEV_AK_SECRET }}
+          ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+        run: |
+          mkdir -p ~/.s
+          cat > ~/.s/access.yaml <<EOF
+          dev:
+            AccountID: '$ALIYUN_ACCOUNT_ID'
+            AccessKeyID: $ALIYUN_AK_ID
+            AccessKeySecret: $ALIYUN_AK_SECRET
+          EOF
+      - name: s deploy
+        env:
+          GIT_SHA: ${{ needs.build-push.outputs.image_tag }}
+          FC_ACCESS: dev
+          OSS_BUCKET: vista-fc-dev
+          ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+          VPC_ID: ${{ secrets.VPC_ID }}
+          VSWITCH_ID: ${{ secrets.VSWITCH_ID }}
+          SG_ID: ${{ secrets.SG_ID }}
+          NAS_MOUNT_TARGET: ${{ secrets.NAS_MOUNT_TARGET }}
+        run: s deploy --access dev --assume-yes
+      - name: Smoke
+        env:
+          FC_SMOKE_READY: "1"
+        run: uv sync --dev && uv run pytest tests/smoke --env dev
+
+  # Prod deploy is manual-trigger only so PR builds do not block on it.
+  # Run via Actions -> "ci" -> "Run workflow" on main.
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: [deploy-dev]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install serverless-devs
+        run: npm install -g @serverless-devs/s
+      - name: Configure s access
+        env:
+          ALIYUN_AK_ID: ${{ secrets.ALIYUN_PROD_AK_ID }}
+          ALIYUN_AK_SECRET: ${{ secrets.ALIYUN_PROD_AK_SECRET }}
+          ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+        run: |
+          mkdir -p ~/.s
+          cat > ~/.s/access.yaml <<EOF
+          prod:
+            AccountID: '$ALIYUN_ACCOUNT_ID'
+            AccessKeyID: $ALIYUN_AK_ID
+            AccessKeySecret: $ALIYUN_AK_SECRET
+          EOF
+      - name: s deploy
+        env:
+          GIT_SHA: ${{ needs.build-push.outputs.image_tag }}
+          FC_ACCESS: prod
+          OSS_BUCKET: vista-fc-prod
+          ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+        run: s deploy --access prod --assume-yes
+      - name: Smoke
+        env:
+          FC_SMOKE_READY: "1"
+        run: uv sync --dev && uv run pytest tests/smoke --env prod
