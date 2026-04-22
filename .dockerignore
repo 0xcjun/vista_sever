@@ -1,0 +1,40 @@
+# VCS
+.git/
+.gitignore
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Docs & dev
+docs/
+tests/
+dev/
+.github/
+.serverless-devs/
+.s/
+flows/
+
+# Env files (never bake into image)
+.env
+.env.*
+!.env.example
+
+# Local fixtures / data
+tests/fixtures/duckdb/*.duckdb
+tests/fixtures/parquet/*.parquet
+dev/data/
+
+# Plans / specs
+docs/superpowers/
