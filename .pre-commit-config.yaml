@@ -5,7 +5,9 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-added-large-files
-        args: ["--maxkb=500"]
+        # DuckDB files have a minimum ~1MB page allocation, so fixture
+        # databases need a higher ceiling than ordinary source files.
+        args: ["--maxkb=1500"]
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict
