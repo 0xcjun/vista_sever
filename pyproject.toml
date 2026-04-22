@@ -33,6 +33,7 @@ dev = [
     "syrupy>=4.8.0",
     "pre-commit>=4.0.0",
     "detect-secrets>=1.5.0",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
