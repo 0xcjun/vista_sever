@@ -16,7 +16,7 @@ def _deterministic_seeds() -> None:
     """
     random.seed(42)
     try:
-        import numpy as np
+        import numpy as np  # pyright: ignore[reportMissingImports]
 
         np.random.seed(42)
     except ImportError:
