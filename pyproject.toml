@@ -1,0 +1,107 @@
+[project]
+name = "vista-fc"
+version = "0.1.0"
+description = "Aliyun Function Compute wrapper for vista workflows"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    # 业务核心 — 来自私有源 zbczsc-dev；若本地无 token 取消注释后 uv sync 会失败
+    # "vista==3.1.1.260418",
+    # 数据与契约
+    "pydantic>=2.6.0",
+    "polars>=1.0.0",
+    "duckdb>=0.9.0",
+    # 阿里云 SDK
+    "oss2>=2.18.0",
+    "alibabacloud-fc20230330>=4.0.0",
+    # 日志与工具
+    "loguru>=0.7.0",
+    "tomlkit>=0.13.0",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.28.0",
+    "ruff>=0.8.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "pytest-mock>=3.12.0",
+    "pytest-httpx>=0.30.0",
+    "pytest-benchmark>=4.0.0",
+    "syrupy>=4.8.0",
+    "pre-commit>=4.0.0",
+    "detect-secrets>=1.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vista_fc", "handlers"]
+
+# ── uv sources ───────────────────────────────────────────────────────────────
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple/"
+
+[[tool.uv.index]]
+name = "zbczsc-dev"
+url = "https://pypi.zbczsc.com/team/dev/+simple/"
+explicit = true
+
+[tool.uv.sources]
+vista = { index = "zbczsc-dev" }
+
+# ── ruff ─────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "handlers", "tests"]
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4", "SIM", "UP", "C90"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["vista_fc", "handlers"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
+
+# ── basedpyright ─────────────────────────────────────────────────────────────
+[tool.basedpyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+include = ["src", "handlers", "tests"]
+exclude = ["**/__pycache__", ".venv", "build", "dist"]
+reportMissingTypeStubs = false
+venvPath = "."
+venv = ".venv"
+
+# ── pytest ───────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "s_local: integration tests that use `s local invoke` (requires docker + serverless-devs)",
+    "slow: slow tests (>5s)",
+]
+addopts = "-ra --strict-markers"
+
+# ── coverage ─────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+branch = true
+source = ["src/vista_fc"]
+omit = ["tests/*", "handlers/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
