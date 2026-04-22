@@ -1,0 +1,48 @@
+# Local-only dependencies for integration tests and `s local invoke`.
+# NOT used in production (FC uses real Aliyun services).
+
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: dev
+      MINIO_ROOT_PASSWORD: devdevdev  # pragma: allowlist secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./data/minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      retries: 10
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: /bin/sh -c
+    command:
+      - |
+        mc alias set local http://minio:9000 dev devdevdev &&
+        (mc ls local/vista-fc-dev || mc mb local/vista-fc-dev) &&
+        echo "[minio-setup] bucket vista-fc-dev ready"
+    restart: "no"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    environment:
+      CLICKHOUSE_USER: dev
+      CLICKHOUSE_PASSWORD: dev  # pragma: allowlist secret
+    ports:
+      - "8123:8123"
+      - "9002:9000"
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+      - ./init/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      retries: 10
