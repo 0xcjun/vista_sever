@@ -1,0 +1,18 @@
+{
+  "tenant": {
+    "user_hash": "u_local_dev",
+    "workspace_id": "EXP_LOCAL",
+    "workspace_kind": "research",
+    "run_id": "run-local-build-0001",
+    "requested_at": "2026-04-22T10:00:00Z"
+  },
+  "payload": {
+    "routes_toml_uri": "oss://vista-fc-dev/user_data/u_local_dev/research/EXP_LOCAL/factor_routes.toml",
+    "builder_type": "agno_team",
+    "factor_numbers": 2,
+    "batch_size": 2,
+    "max_workers": 1,
+    "multi_turn": false,
+    "max_retries": 2
+  }
+}

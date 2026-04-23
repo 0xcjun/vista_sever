@@ -1,8 +1,10 @@
-"""factor-plan service: wraps vista.agents.factor_plan.plan_factor_routes."""
+"""factor-plan service: wraps vista.agents.factor_plan.FactorPlanAgent."""
 
 from __future__ import annotations
 
-from vista.agents.factor_plan import plan_factor_routes as _plan_factor_routes
+import asyncio
+
+from vista.agents.factor_plan import FactorPlanAgent
 
 from vista_fc.contracts.common import TenantContext
 from vista_fc.contracts.factor_plan import (
@@ -20,19 +22,17 @@ def factor_plan_service(
     payload: FactorPlanInput,
     workspace: WorkspaceStorage,
 ) -> FactorPlanOutput:
-    result = _plan_factor_routes(
-        user_input=payload.user_input,
-        interactive=payload.interactive,
-        output_dir=None,
+    agent = FactorPlanAgent(
         model=payload.model,
         skill_path=payload.skill_path or ".claude/skills/vista-factor-planning",
+        interactive=payload.interactive,
         verbose=False,
     )
-    dumped = result.model_dump() if hasattr(result, "model_dump") else dict(result)
+    result = asyncio.run(agent.plan(payload.user_input))
 
     toml_local = workspace.tmp_root / f"factor_routes_{tenant.run_id}.toml"
     toml_local.parent.mkdir(parents=True, exist_ok=True)
-    toml_local.write_text(str(dumped.get("toml_text", "")), encoding="utf-8")
+    agent.save_toml(result, toml_local)
 
     key = f"user_data/{tenant.user_hash}/research/{tenant.workspace_id}/factor_routes.toml"
     uri = f"oss://{workspace.oss.bucket_name}/{key}"
@@ -40,12 +40,12 @@ def factor_plan_service(
 
     routes = [
         FactorRouteSummary(
-            code=r.get("code", ""),
-            name=r.get("name", ""),
-            compute_engine=r.get("compute_engine", ""),
-            description=r.get("description"),
+            code=r.code,
+            name=r.name,
+            compute_engine=r.compute_engine.value if hasattr(r.compute_engine, "value") else str(r.compute_engine),
+            description=r.description,
         )
-        for r in dumped.get("routes", [])
+        for r in result.routes
     ]
 
     return FactorPlanOutput(routes=routes, routes_toml_artifact=artifact)

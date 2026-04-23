@@ -5,38 +5,7 @@
 
 ## Current blockers
 
-Scaffolding in Plan 05 is in place, but a handful of upstream gaps still keep
-the full pipeline from running end-to-end. Document them here so the next
-operator does not re-debug them.
-
-### 1. `vista` is not installable inside the docker image
-
-`pyproject.toml` currently pins:
-
-```toml
-[tool.uv.sources]
-vista = { path = "../../cursorPro/vista", editable = true }
-```
-
-That relative path is fine locally but does not exist inside the docker build
-context, so `scripts/build_image.sh --dev` fails while resolving dependencies.
-Integration tests that use `s local invoke` therefore can't actually execute;
-the `s_local` marker skips them.
-
-Two fixes, pick one:
-
-- **Private index**: configure
-  `UV_INDEX_ZBCZSC_DEV_USERNAME` / `UV_INDEX_ZBCZSC_DEV_PASSWORD`
-  in CI (GitHub secrets `ZBCZSC_DEV_USER` / `ZBCZSC_DEV_TOKEN`) and flip the
-  dep back to `vista = { index = "zbczsc-dev" }`.
-- **Pre-built wheel**: run `uv build -o dist/ /Users/0xjun/Documents/cursorPro/vista`
-  before `scripts/build_image.sh`, then update the Dockerfile with
-  `COPY dist/*.whl /tmp/` and `uv sync --find-links /tmp/`.
-
-Until that is resolved, the CI integration job runs with `-m "not s_local"`
-(mocked-chain tests only) and the `s local invoke` test stays skipped locally.
-
-### 2. Aliyun credentials are not provisioned
+### 1. Aliyun credentials are not provisioned
 
 Preflight and deploy stages need the following GitHub secrets configured:
 
@@ -47,10 +16,17 @@ Preflight and deploy stages need the following GitHub secrets configured:
 - `ACR_USER` / `ACR_PASS` (ACR push access)
 - `VPC_ID` / `VSWITCH_ID` / `SG_ID` / `NAS_MOUNT_TARGET`
 - `CLICKHOUSE_URL` / `CLICKHOUSE_USER` / `CLICKHOUSE_PASS`
-- `ZBCZSC_DEV_USER` / `ZBCZSC_DEV_TOKEN` (for option A above)
 
 Plus the RAM roles `fc-vista-role` (function execution) and `fnf-vista-role`
 (FnF flow execution) must exist before the first deploy.
+
+> vista 已改从私有源 `zbczsc-dev` 安装（无需凭证），docker 镜像可以本地/CI 正常构建。历史阻塞项（editable 路径 + private-token）已解除。
+
+### 2. arm64 linux 无私有 wheel
+
+`chan-factor-rs` / `chanfactor` 只发布了 `linux_x86_64` wheel，导致镜像构建
+固定为 `linux/amd64`（见 [GUIDE §8.2](GUIDE.md#82-arm64-linux-无私有-wheel)）。
+FC 函数实例必须选 x86 架构。
 
 ---
 
@@ -89,9 +65,9 @@ s cli fnf DescribeExecution --name research-pipeline --execution-name <name> --a
 
 ### 依赖 wheel 构建失败
 
-1. 检查 `ZBCZSC_DEV_TOKEN` 是否轮换/过期（GitHub Secrets）
-2. 本地复现：`uv sync --reinstall`
-3. 若是 vista 版本问题：回退 `pyproject.toml` 里的 vista pin，重 build
+1. 本地复现：`uv sync --reinstall`
+2. 确认 `zbczsc-dev` 私有源可达：`curl -s https://pypi.zbczsc.com/team/dev/+simple/vista/ | head`
+3. 若 vista 版本回归：回退 `pyproject.toml` 里的 `vista>=X.Y.Z` pin，`uv lock`，重 build
 
 ### 镜像拉不动（ImagePullBackOff 类错误）
 

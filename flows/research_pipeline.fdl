@@ -2,28 +2,63 @@ version: v1
 type: flow
 name: research-pipeline
 
+# 完整策略研究工作流:plan → builder → detect → duplicate → evaluate → filter → backtest
+# 所有参数由 input 透传,fdl 内不保留任何业务写死值。
+#
 # Input shape:
 # {
 #   "tenant": {...TenantContext...},
+#
+#   # factor-plan
 #   "user_input": "...",
-#   "plan_model": "claude-opus-4-7",
-#   "build_model": null,
+#   "plan_model": null | "glm-4.7",
+#   "skill_path": null | ".claude/skills/vista-factor-planning",
+#   "interactive": false,
+#
+#   # factor-builder
+#   "build_model": null | "glm-4.7",
+#   "builder_type": "agno_team",        # claude | agno_agent | agno_team
 #   "factor_numbers": 20,
 #   "batch_size": 5,
 #   "build_workers": 1,
+#   "multi_turn": false,
+#   "build_max_retries": 3,
+#
+#   # factor-detect
 #   "detect_workers": 4,
+#   "detect_timeout": 60,
+#
+#   # factor-duplicate
 #   "dup_workers": 4,
+#   "dup_threshold": 0.8,
+#   "dup_timeout": 60,
+#
+#   # factor-evaluate
 #   "eval_workers": 4,
-#   "route_codes": ["R001","R002"],
-#   "problem_codes": ["P001"],
-#   "eval_models": ["MA001","CSSorting_equal"],
+#   "eval_timeout": 60,
+#   "eval_models": ["DirectExposure"],
 #   "fee_rate": 0.0,
+#
+#   # factor-filter
+#   "problem_codes": ["FTS_A504A636"],   # route_codes 由 builder 动态产出,无需 input
 #   "evaluate_methods": [],
 #   "filter_methods": [],
 #   "positive_extractor": "ratio_across_problems",
+#   "positive_metric": "绝对收益",
+#   "positive_threshold": 0.618,
 #   "top_n": 20,
 #   "author": "",
-#   "outsample_sdt": "20250101"
+#   "outsample_sdt": "20250101",
+#
+#   # strategy-backtest (foreach over filter output)
+#   "mode": "research",                  # research | realtime
+#   "data_mode": "total",                # total | train | valid
+#   "backtest_concurrency": 8,           # 并行 backtest 的最大迭代数
+#   "backtest_workers": 1,
+#   "wbt": { "fee_rate": 0.0, "digits": 2, "n_jobs": 1, "yearly_days": 252 },
+#
+#   # 通用:研究数据(生产 NAS 预置时可设为 null)
+#   "research_data_uri": null
 # }
 
 steps:
@@ -38,9 +73,9 @@ steps:
         source: |
           {
             "user_input":  $.user_input,
-            "interactive": false,
+            "interactive": $.interactive,
             "model":       $.plan_model,
-            "skill_path":  null
+            "skill_path":  $.skill_path
           }
     outputMappings:
       - target: $.plan_out
@@ -67,15 +102,19 @@ steps:
         source: |
           {
             "routes_toml_uri": $.plan_out.payload.routes_toml_artifact.oss_uri,
+            "builder_type":    $.builder_type,
             "factor_numbers":  $.factor_numbers,
             "batch_size":      $.batch_size,
             "max_workers":     $.build_workers,
-            "multi_turn":      false,
-            "model":           $.build_model
+            "multi_turn":      $.multi_turn,
+            "model":           $.build_model,
+            "max_retries":     $.build_max_retries
           }
     outputMappings:
       - target: $.build_out
         source: $
+      - target: $.route_codes
+        source: $.payload.route_codes
     retry:
       - errors: ["VISTA_LLM_RATE_LIMIT", "OSS_READ_FAIL", "OSS_WRITE_FAIL", "CLICKHOUSE_CONNECT", "OSS_ETAG_CONFLICT"]
         intervalSeconds: 10
@@ -97,9 +136,10 @@ steps:
       - target: payload
         source: |
           {
-            "factors_db_uri": $.build_out.payload.factors_db_artifact.oss_uri,
-            "max_workers":    $.detect_workers,
-            "timeout":        60
+            "factors_db_uri":     $.build_out.payload.factors_db_artifact.oss_uri,
+            "research_data_uri":  $.research_data_uri,
+            "max_workers":        $.detect_workers,
+            "timeout":            $.detect_timeout
           }
     outputMappings:
       - target: $.detect_out
@@ -124,11 +164,13 @@ steps:
       - target: payload
         source: |
           {
-            "factors_db_uri": $.build_out.payload.factors_db_artifact.oss_uri,
-            "route_codes":    $.route_codes,
-            "problem_codes":  $.problem_codes,
-            "threshold":      0.8,
-            "max_workers":    $.dup_workers
+            "factors_db_uri":     $.build_out.payload.factors_db_artifact.oss_uri,
+            "research_data_uri":  $.research_data_uri,
+            "route_codes":        $.route_codes,
+            "problem_codes":      $.problem_codes,
+            "threshold":          $.dup_threshold,
+            "max_workers":        $.dup_workers,
+            "timeout":            $.dup_timeout
           }
     outputMappings:
       - target: $.dup_out
@@ -154,12 +196,14 @@ steps:
       - target: payload
         source: |
           {
-            "factors_db_uri": $.build_out.payload.factors_db_artifact.oss_uri,
-            "route_codes":    $.route_codes,
-            "problem_codes": $.problem_codes,
-            "models":         $.eval_models,
-            "fee_rate":       $.fee_rate,
-            "max_workers":    $.eval_workers
+            "factors_db_uri":     $.build_out.payload.factors_db_artifact.oss_uri,
+            "research_data_uri":  $.research_data_uri,
+            "route_codes":        $.route_codes,
+            "problem_codes":      $.problem_codes,
+            "models":             $.eval_models,
+            "fee_rate":           $.fee_rate,
+            "max_workers":        $.eval_workers,
+            "timeout":            $.eval_timeout
           }
     outputMappings:
       - target: $.eval_out
@@ -186,13 +230,14 @@ steps:
         source: |
           {
             "factors_db_uri":     $.build_out.payload.factors_db_artifact.oss_uri,
+            "research_data_uri":  $.research_data_uri,
             "problem_codes":      $.problem_codes,
             "route_codes":        $.route_codes,
             "evaluate_methods":   $.evaluate_methods,
             "filter_methods":     $.filter_methods,
             "positive_extractor": $.positive_extractor,
-            "positive_metric":    "绝对收益",
-            "positive_threshold": 0.618,
+            "positive_metric":    $.positive_metric,
+            "positive_threshold": $.positive_threshold,
             "n":                  $.top_n,
             "author":             $.author,
             "outsample_sdt":      $.outsample_sdt
@@ -210,6 +255,43 @@ steps:
       - errors: ["*"]
         goto: abort
     timeoutSeconds: 300
+
+  - type: foreach
+    name: backtest_fanout
+    iterationMapping:
+      collection: $.filter_out.payload.toml_artifacts
+      item:       $.toml
+    maxConcurrency: $.backtest_concurrency
+    steps:
+      - type: task
+        name: strategy_backtest
+        resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/strategy-backtest"
+        inputMappings:
+          - target: tenant
+            source: $.tenant
+          - target: payload
+            source: |
+              {
+                "strategy_toml_uri":  $.toml.oss_uri,
+                "research_data_uri":  $.research_data_uri,
+                "mode":               $.mode,
+                "data_mode":          $.data_mode,
+                "fee_rate":           $.wbt.fee_rate,
+                "digits":             $.wbt.digits,
+                "n_jobs":             $.wbt.n_jobs,
+                "yearly_days":        $.wbt.yearly_days,
+                "max_workers":        $.backtest_workers
+              }
+        retry:
+          - errors: ["OSS_READ_FAIL", "OSS_WRITE_FAIL", "CLICKHOUSE_CONNECT"]
+            intervalSeconds: 10
+            maxAttempts: 3
+          - errors: ["VISTA_LOGIC_ERROR"]
+            maxAttempts: 0
+        catch:
+          - errors: ["*"]
+            goto: abort
+        timeoutSeconds: 3600
 
   - type: succeed
     name: done

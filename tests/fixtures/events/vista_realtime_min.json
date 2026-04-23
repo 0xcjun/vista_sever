@@ -1,13 +1,12 @@
 {
   "tenant": {
     "user_hash": "u_local_dev",
-    "workspace_id": "FTS_LOCAL",
+    "workspace_id": "EXP_LOCAL",
     "workspace_kind": "realtime",
     "run_id": "run-local-rt-0001",
     "requested_at": "2026-04-22T10:00:00Z"
   },
   "payload": {
-    "strategy_toml_uri": "oss://vista-fc-dev/user_data/u_local_dev/realtime/FTS_LOCAL/strategy.toml",
-    "update_mode": "auto"
+    "strategy_toml_uri": "oss://vista-fc-dev/user_data/u_local_dev/realtime/FTS_FILTER_DIRECTEXPOSURE_MEAN_RANK_TOP_N_FTS_A504A636_96B28A94/FILTER_DIRECTEXPOSURE_MEAN_RANK_TOP_N_FTS_A504A636_96B28A94.toml"
   }
 }

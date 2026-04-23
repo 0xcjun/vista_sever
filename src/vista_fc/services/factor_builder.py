@@ -6,7 +6,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from vista.agents.factor_builder import FactorBuilder as _FactorBuilder
+from vista.agents import factor_build as _factor_build
+from vista.factor_db.models import FactorRoute
 
 from vista_fc.contracts.common import TenantContext
 from vista_fc.contracts.factor_builder import (
@@ -34,10 +35,14 @@ def factor_builder_service(
 ) -> FactorBuilderOutput:
     if payload.routes_toml_uri:
         toml_local, _ = pull_object(workspace, oss_uri=payload.routes_toml_uri)
-        routes = _load_routes_from_toml(toml_local)
+        route_dicts = _load_routes_from_toml(toml_local)
     else:
-        assert payload.route_code is not None
-        routes = [{"code": payload.route_code}]
+        # route_code 单独路由：FactorRoute 有多个必填字段（name/engine/economic_logic/...），
+        # 光 code 不够。要么跑上游 factor-plan 拿 TOML，要么后续扩展成从 factor_db 查历史路线。
+        raise NotImplementedError("route_code 单路径分支未实现；请先通过 factor-plan 生成 routes_toml_uri")
+
+    # TOML 里的每一项是 dict，vista.FactorBuilder 要求 FactorRoute pydantic 对象
+    routes: list[FactorRoute] = [FactorRoute.model_validate(r) for r in route_dicts]
 
     db_local = workspace.tmp_root / "factors.duckdb"
     db_local.parent.mkdir(parents=True, exist_ok=True)
@@ -45,9 +50,10 @@ def factor_builder_service(
     total = 0
     per_route: list[RouteBuildStat] = []
     for route in routes:
-        builder = _FactorBuilder(
-            route=route,  # pyright: ignore[reportArgumentType]
+        factors = _factor_build(
+            route=route,
             db_path=str(db_local),
+            builder_type=payload.builder_type,
             factor_numbers=payload.factor_numbers,
             batch_size=payload.batch_size,
             max_workers=payload.max_workers,
@@ -56,10 +62,9 @@ def factor_builder_service(
             max_retries=payload.max_retries,
             verbose=False,
         )
-        factors = builder.run()
         per_route.append(
             RouteBuildStat(
-                route_code=str(route.get("code", "")),
+                route_code=route.code,
                 factor_count=len(factors),
             )
         )
@@ -72,5 +77,6 @@ def factor_builder_service(
     return FactorBuilderOutput(
         total_factors=total,
         per_route=per_route,
+        route_codes=[s.route_code for s in per_route],
         factors_db_artifact=artifact,
     )

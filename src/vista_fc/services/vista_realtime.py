@@ -41,10 +41,9 @@ def vista_realtime_service(
     t1 = perf_counter()
 
     wf = _RealtimeWorkflow(config=cfg)
-    update = wf.update(
-        update_mode=payload.update_mode,  # pyright: ignore[reportCallIssue]
-        push_targets=payload.push_targets,  # pyright: ignore[reportCallIssue]
-    )
+    # vista.RealtimeWorkflow.update() 无参：update_mode 由 _resolve_update_mode 自决，
+    # push_targets 由 config.publish 决定，都从 strategy.toml 里读，不经 FC 入参。
+    update = wf.update()
     t2 = perf_counter()
 
     summary_raw = update["summary"]

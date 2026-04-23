@@ -39,13 +39,14 @@ def test_input_models_xor_models_config_uri() -> None:
 
 def test_output_carries_counts() -> None:
     out = FactorEvaluateOutput(
-        total_evaluations=500,
-        succeeded=480,
-        failed=20,
+        total_evaluated=500,
+        n_success=480,
+        n_failed=20,
+        elapsed_seconds=12.5,
         report_artifact=ArtifactRef(
             kind="report_json",
             oss_uri="oss://b/eval_report.json",
             size_bytes=8_000,
         ),
     )
-    assert out.succeeded + out.failed == out.total_evaluations
+    assert out.n_success + out.n_failed == out.total_evaluated

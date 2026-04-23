@@ -1,0 +1,24 @@
+{
+  "tenant": {
+    "user_hash": "u_local_dev",
+    "workspace_id": "EXP_LOCAL",
+    "workspace_kind": "research",
+    "run_id": "run-local-dup-0001",
+    "requested_at": "2026-04-22T10:00:00Z"
+  },
+  "payload": {
+    "factors_db_uri": "oss://vista-fc-dev/user_data/u_local_dev/research/EXP_LOCAL/factors.duckdb",
+    "route_codes": [
+      "9e9bc0998d63",
+      "0c5f7bd250a8",
+      "b28371270499"
+    ],
+    "problem_codes": [
+      "FTS_A504A636"
+    ],
+    "threshold": 0.8,
+    "max_workers": 1,
+    "timeout": 120,
+    "research_data_uri": "oss://vista-fc-dev/research_data/future_kline.duckdb"
+  }
+}

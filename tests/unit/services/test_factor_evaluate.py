@@ -32,9 +32,11 @@ def test_happy_path(
 
     mock_report = MagicMock()
     mock_report.model_dump.return_value = {
-        "total_evaluations": 200,
-        "succeeded": 180,
-        "failed": 20,
+        "problem_stats": [
+            {"problem_code": "P1", "n_factors": 20, "n_pending": 20, "n_success": 18, "n_failed": 2},
+        ],
+        "total_evaluated": 20,
+        "elapsed_seconds": 3.14,
     }
     patched_eval.return_value = mock_report
 
@@ -55,6 +57,7 @@ def test_happy_path(
         ),
         workspace=workspace_mock,
     )
-    assert out.total_evaluations == 200
-    assert out.succeeded == 180
-    assert out.failed == 20
+    assert out.total_evaluated == 20
+    assert out.n_success == 18
+    assert out.n_failed == 2
+    assert out.elapsed_seconds == 3.14

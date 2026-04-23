@@ -7,8 +7,6 @@ and publishes to configured targets.
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from vista_fc.contracts.common import ArtifactRef
@@ -18,8 +16,6 @@ class VistaRealtimeInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     strategy_toml_uri: str
-    update_mode: Literal["auto", "full", "incremental"] = "auto"
-    push_targets: list[str] = Field(default_factory=lambda: ["default"])
 
 
 class SummaryData(BaseModel):

@@ -8,7 +8,9 @@
 # Required env / files:
 #   .env.build      — contains UV_INDEX_ZBCZSC_DEV_USERNAME/PASSWORD
 #   IMAGE_REGISTRY  — default: registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base
-#   IMAGE_PLATFORMS — default: linux/amd64,linux/arm64 (only on --push)
+#   IMAGE_PLATFORMS — default: linux/amd64 (only on --push)
+#                     注意：chan-factor-rs / chanfactor 只发布 linux_x86_64 wheel，
+#                     arm64 linux 无法解析；如需 arm64 部署，先让 vista 团队补 wheel。
 
 set -euo pipefail
 
@@ -27,10 +29,11 @@ GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 
 if $DEV_MODE; then
   TAG="dev"
-  PLATFORMS="linux/$(uname -m | sed 's/x86_64/amd64/;s/arm64/arm64/;s/aarch64/arm64/')"
+  # 固定 linux/amd64：FC 目标平台为 amd64，且私有 wheel 只发布 x86_64
+  PLATFORMS="linux/amd64"
 else
   TAG="$GIT_SHA"
-  PLATFORMS="${IMAGE_PLATFORMS:-linux/amd64,linux/arm64}"
+  PLATFORMS="${IMAGE_PLATFORMS:-linux/amd64}"
 fi
 
 IMAGE="${IMAGE_REGISTRY}:${TAG}"

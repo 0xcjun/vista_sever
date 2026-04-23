@@ -1,272 +1,333 @@
-# vista-fc 使用与部署指南
+# vista-fc 指南
 
-本仓库把 [vista](../../cursorPro/vista) 投研框架的 8 个业务流程封装为阿里云函数计算 (FC 3.0) 函数，由函数工作流 (FnF) 编排，使用 [serverless-devs](https://www.serverless-devs.com/) 管理部署。
+本仓库把 vista 投研框架的 8 个业务流程封装成阿里云函数计算 (FC 3.0) 函数，由函数工作流 (FnF) 编排。**最终目标：给前端提供一组 HTTP API，前端调用后由阿里云 FC 执行 vista 工作流并返回结构化结果。**
+
+vista 及其私有传递依赖（`chan-factor-rs` / `chanfactor`）从私有源 [`zbczsc-dev`](https://pypi.zbczsc.com/team/dev/+simple/) 解析，无需认证，`pyproject.toml` 的 `[tool.uv.sources]` 已配好路由。
 
 ---
 
 ## 目录
 
-- [1. 架构速览](#1-架构速览)
-- [2. 先决条件](#2-先决条件)
-- [3. 本地开发](#3-本地开发)
-  - [3.1 首次设置](#31-首次设置)
-  - [3.2 日常开发循环](#32-日常开发循环)
-  - [3.3 运行测试](#33-运行测试)
-  - [3.4 本地 MinIO 集成（OSS_S3_COMPAT）](#34-本地-minio-集成oss_s3_compat)
-- [4. 镜像与部署](#4-镜像与部署)
-  - [4.1 构建 Docker 镜像](#41-构建-docker-镜像)
-  - [4.2 推送到 ACR](#42-推送到-acr)
-  - [4.3 部署到阿里云 FC](#43-部署到阿里云-fc)
-  - [4.4 preflight 部署链路校验](#44-preflight-部署链路校验)
-- [5. 调用函数](#5-调用函数)
-- [6. 监控与日志](#6-监控与日志)
-- [7. 故障排除](#7-故障排除)
-- [8. 已知阻塞项](#8-已知阻塞项)
+- [1. 实际开发](#1-实际开发)
+- [2. 本地测试](#2-本地测试)
+- [3. 模拟真实环境测试](#3-模拟真实环境测试)
+- [4. 真实环境部署](#4-真实环境部署)
+- [5. 前端接入](#5-前端接入)
+  - [5.1 方案 A：FC 3.0 HTTP 触发器（单函数调用）](#51-方案-afc-30-http-触发器单函数调用)
+  - [5.2 方案 B：API 网关（统一入口）](#52-方案-b阿里云-api-网关统一入口推荐生产用)
+  - [5.3 方案 C：BFF + FnF（全流程调用）](#53-方案-cbff--fnf全流程调用)
+  - [5.4 统一调用契约](#54-统一调用契约)
+  - [5.5 函数到 HTTP 语义映射](#55-函数到-http-语义映射)
+- [附录：仓库结构](#附录仓库结构)
 
 ---
 
-## 1. 架构速览
+## 1. 实际开发
 
-```
-调用方 ─→ HTTP / StartExecution ─→ Serverless Workflow (FnF)
-                                        │
-                                        ▼
-                              FC 3.0 · 8 functions
-                              (共享镜像 vista-fc-base:<git_sha>)
-                                        │
-                              ┌─────────┼─────────┐
-                              ▼         ▼         ▼
-                              OSS      NAS     ClickHouse
-                         (用户数据)  (热缓存)   (行情/因子值)
-```
+**先决条件**
 
-**8 个函数**（`src/vista_fc/services/` + `handlers/`）：
+| 组件 | 安装 |
+|---|---|
+| Python 3.12 | `uv python install 3.12` |
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Docker Desktop ≥ 28 | 官网 |
+| [serverless-devs](https://www.serverless-devs.com/) | `npm i -g @serverless-devs/s`（仅部署/s local 需要） |
 
-| FC 函数 | vista 入口 | 作用 |
-|---|---|---|
-| factor-plan | `vista.agents.factor_plan.plan_factor_routes` | 交易想法 → 因子路线 |
-| factor-builder | `vista.agents.factor_builder.FactorBuilder` | LLM 批量挖因子 |
-| factor-detect | `vista.utils.factor_detect.factor_detect` | 未来数据 / 方差体检 |
-| factor-duplicate | `vista.utils.factor_duplicate.factor_duplicate` | 相关性去冗余 |
-| factor-evaluate | `vista.utils.factor_evaluate.factor_evaluate` | 策略建模评估 |
-| factor-filter | `vista.utils.factor_filter.factor_filter` | top-n 精筛 → 策略 TOML |
-| strategy-backtest | `vista.utils.strategy_backtest.run_strategy_backtest` | 单份 TOML 完整回测 |
-| vista-realtime | `vista.realtime.workflow.RealtimeWorkflow` | 实盘定时更新 |
-
-**3 个 FnF 流**（`flows/`）：
-
-- `research_pipeline.fdl` — `plan → build → detect → duplicate → evaluate → filter`
-- `backtest_fanout.fdl` — `ForEach` 批量回测
-- `research_full.fdl` — 上述两者组合
-
-设计细节见 [docs/superpowers/specs/2026-04-22-vista-fc-encapsulation-design.md](superpowers/specs/2026-04-22-vista-fc-encapsulation-design.md)。
-
----
-
-## 2. 先决条件
-
-### 本地开发
-
-| 组件 | 用途 | 安装 |
-|---|---|---|
-| Python 3.12 | 运行时 | `uv python install 3.12` |
-| [uv](https://docs.astral.sh/uv/) | 包管理 | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Docker Desktop ≥ 28 | 本地 MinIO / ClickHouse + 镜像构建 | 官网 |
-| [serverless-devs](https://www.serverless-devs.com/) | FC 部署 + 本地调用 | `npm i -g @serverless-devs/s` |
-| vista 源代码 | 业务逻辑 | 克隆到 `../cursorPro/vista` 并在其中 `uv sync` |
-
-### 阿里云（部署时）
-
-- 账号 + RAM 用户（部署账号）带 `AliyunFCFullAccess` + `AliyunContainerRegistryFullAccess`
-- ACR 个人版 / 企业版命名空间 `vista` + 仓库 `vista-fc-base`
-- VPC + 交换机 + 安全组（FC 函数所处网络）
-- NAS 文件系统 + 挂载点（用于 k 线缓存 / 模型权重）
-- OSS Bucket 至少 3 个：`vista-fc-dev` / `vista-fc-preflight` / `vista-fc-prod`
-- ClickHouse 服务可达 FC 所在 VPC
-- 两个函数运行角色：`fc-vista-role`（FC 执行角色）、`fnf-vista-role`（FnF 调用 FC 的角色）
-
----
-
-## 3. 本地开发
-
-### 3.1 首次设置
+### 1.1 首次设置
 
 ```bash
-# 1. 克隆并进入
+# 克隆并装依赖（vista / chan-factor-rs / chanfactor 从 zbczsc-dev 私有源拉，无需认证）
 git clone <repo> vista_sever && cd vista_sever
-
-# 2. 确保 vista 源代码在 ../cursorPro/vista 且已 uv sync 过（本地有 darwin wheel 缓存）
-ls ../cursorPro/vista/.venv  # 应该存在
-
-# 3. 安装依赖（会从本地 path 引 vista）
 uv sync
 
-# 4. 验证 import 链
+# 验证 import 链
 uv run python -c "
-from vista.utils.factor_detect import factor_detect
+import vista, wbt, wbt.mock
 from vista_fc.services import factor_detect_service, factor_plan_service
-from vista_fc.contracts import FactorDetectInput, TenantContext
+from vista_fc.contracts import FactorDetectInput
 print('vista + vista-fc import OK')
 "
 
-# 5. 本地环境变量
-cp .env.example .env.local
-# 编辑 .env.local：
-#   OSS_S3_COMPAT=true                        # 本地 MinIO 模式
-#   OSS_ENDPOINT=http://localhost:9000
-#   OSS_ACCESS_KEY_ID=dev
-#   OSS_ACCESS_KEY_SECRET=devdevdev
-#   OSS_BUCKET=vista-fc-dev
-#   OSS_REGION=us-east-1                      # MinIO 默认
-#   CLICKHOUSE_URL=http://localhost:8123
-#   CLICKHOUSE_USER=dev
-#   CLICKHOUSE_PASS=dev
-#   NAS_CACHE_ROOT=/tmp/vista-cache
+# 本地环境变量
+cp .env.example .env.local   # 不再需要改，默认已是本地 MinIO 模式
 
-# 6. 安装 pre-commit 钩子
+# pre-commit 钩子
 uv run pre-commit install
 ```
 
-### 3.2 日常开发循环
+> `requires-python` 锁在 `>=3.12,<3.13`，与生产镜像一致，不要用 3.11。
+
+### 1.2 日常开发循环
 
 ```bash
 # 起本地外部依赖（MinIO + ClickHouse）
 docker compose -f dev/compose.yaml up -d
-# → MinIO 面板: http://localhost:9001  (dev / devdevdev)
-# → ClickHouse HTTP: http://localhost:8123
+# → MinIO 控制台:  http://localhost:9001  (dev / devdevdev)
+# → ClickHouse:    http://localhost:8123
 
-# 改代码 → 跑单测（秒级）
+# 改代码 → 单测（秒级反馈）
 uv run pytest tests/unit -v
 
-# 跑集成测试（真 vista + 真 MinIO）
-uv run pytest tests/integration -v
-
-# 全量 + 覆盖率
-uv run pytest --cov=src/vista_fc --cov=handlers --cov-report=term
+# 跑完整测试
+uv run pytest tests/unit tests/integration
 
 # Lint / Type
 uv run ruff check
 uv run basedpyright
 
 # 提交前 pre-commit 会自动跑（ruff-format + gitleaks + detect-secrets）
-git add <files>
-git commit -m "feat: ..."
+git add <files> && git commit -m "feat: ..."
 
 # 收工
 docker compose -f dev/compose.yaml down
 ```
 
-### 3.3 运行测试
+### 1.3 环境变量矩阵
 
-测试金字塔（共 **107 个测试**）：
+不同函数对 env 的依赖不同，误配置就是跑通/跑不通的分水岭。本仓库代码路径实际读的变量：
 
-| 层 | 位置 | 规模 | 特性 |
-|---|---|---|---|
-| 单测 | `tests/unit/` | ~104 | 纯 Python，mock vista，毫秒级 |
-| 集成 | `tests/integration/` | 3 | 真 vista + 真 MinIO（需 docker compose） |
-| 部署 preflight | `tests/deploy_preflight/` | 11 步 bash | 真阿里云隔离部署（需凭据） |
-| 冒烟 | `tests/smoke/` | 4 | 真线上 FC 调用（需 `FC_SMOKE_READY=1`） |
-| 性能基线 | `tests/perf/` | — | 预留目录 |
+| 变量 | 类别 | plan | builder | detect | duplicate | evaluate | filter | backtest | realtime |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `OSS_REGION` / `OSS_BUCKET` / `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 存储 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `OSS_ENDPOINT` | 存储 | 本地 | 本地 | 本地 | 本地 | 本地 | 本地 | 本地 | 本地 |
+| `OSS_S3_COMPAT` | 存储模式切换 | 本地=true | 本地=true | 本地=true | 本地=true | 本地=true | 本地=true | 本地=true | 本地=true |
+| `NAS_CACHE_ROOT` | 缓存目录 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `ANTHROPIC_API_KEY` | LLM | **必需** | **必需** | — | — | — | — | — | — |
+| `ANTHROPIC_BASE_URL` | LLM 反代 | 反代必填 | 反代必填 | — | — | — | — | — | — |
+| `CLAUDE_MODEL` | LLM 模型 | 可选 | 可选 | — | — | — | — | — | — |
+| `AGNO_MODEL` | agno 引擎 | — | 可选 | — | — | — | — | — | — |
+| `CZSC_TOKEN` | 行情 API | 真数据 | 真数据 | 真数据 | — | — | — | **必需** | **必需** |
+| `CZSC_DATA_API` | 行情 API | 可选 | 可选 | 可选 | — | — | — | 可选 | 可选 |
+| `VISTA_DB_TYPE` | 因子库模式 | — | — | — | — | — | 可选 | — | — |
+| `DUCKDB_PATH` | 本地因子库 | — | ✓ | — | — | — | ✓ | — | — |
+| `CLICKHOUSE_DSN` | CH 因子库 | — | CH 模式 | — | — | — | CH 模式 | — | — |
+| `VISTA_RESEARCH_PATH` | 研究产物目录 | — | — | — | — | — | — | ✓ | — |
+
+说明：
+- **"本地"**：本地开发用 MinIO 时必填；线上 Aliyun OSS 留空。
+- **"真数据"**：fixture/mock 数据分支不触发 `vista.data.xy|strategy`；但只要函数真调到这俩模块，未设 token 会在 import 时 `assert` 挂进程（严重故障）。
+- **`CLICKHOUSE_URL/USER/PASS`**（注意不是 vista 能读的名字）：仅 `tests/deploy_preflight/08_ch_probe.sh` 用来 curl 健康检查，**不会被 FC 容器内代码消费**。vista 实际读 `CLICKHOUSE_DSN`（或 `CLICKHOUSE_HOST/PORT/DATABASE/USERNAME/PASSWORD`，注意命名差异）。
+- **默认模式**：`VISTA_DB_TYPE=duckdb`，`DUCKDB_PATH=/mnt/vista-cache/factor.duckdb`（由 `s.yaml` 默认值兜底）；要走 ClickHouse 必须显式 `VISTA_DB_TYPE=clickhouse` + 填 `CLICKHOUSE_DSN`。
+
+完整默认值看 `.env.example` 和 `s.yaml` 的 `common-env` 块。
+
+### 1.4 修改/新增函数
+
+业务分三层，改动的切入点按层而定：
+
+```
+handlers/<name>.py       ← FC 入口，3 行的 thin wrapper
+src/vista_fc/services/   ← 业务服务（调 vista 的地方）
+src/vista_fc/contracts/  ← pydantic DTO（入参/出参契约）
+```
+
+改 DTO 后刷新快照：
 
 ```bash
-# 只跑单测（最快）
-uv run pytest tests/unit
-
-# 跑单测 + 集成（需 minio + vista 可用）
-uv run pytest tests/unit tests/integration
-
-# 只跑一个函数的所有测试
-uv run pytest -k "factor_detect"
-
-# 刷新 DTO 快照（改了 pydantic 模型后）
 uv run pytest tests/unit/contracts/test_schema_snapshot.py --snapshot-update
+```
 
-# 生成覆盖率 HTML
-uv run pytest --cov=src/vista_fc --cov-report=html
+加新函数的 checklist：
+1. `src/vista_fc/contracts/<name>.py` — 定义 `XxxInput` / `XxxOutput`
+2. `src/vista_fc/services/<name>.py` — 业务代码，接 `XxxInput` 返 `XxxOutput`
+3. `handlers/<name>.py` — 拷贝 `handlers/factor_detect.py` 改 import 和 service 即可
+4. `s.yaml` — 加一个 `fc3` 资源块（复制 `factor-plan` 改名）
+5. `tests/unit/handlers/test_<name>.py` — 照着现有 handler 单测写
+
+---
+
+## 2. 本地测试
+
+测试金字塔，由快到慢：
+
+| 层 | 位置 | 依赖 | 规模 | 用途 |
+|---|---|---|---|---|
+| 单测 | `tests/unit/` | 无 | 103 | mock vista，毫秒级，回归核心逻辑 |
+| 集成 | `tests/integration/` | docker compose | 4 | 真 vista + 真 MinIO，秒级 |
+| 冒烟（线上） | `tests/smoke/` | 真阿里云 FC | 4 | `FC_SMOKE_READY=1` 才跑 |
+| 部署 preflight | `tests/deploy_preflight/` | 真阿里云 + RAM 子账号 | 11 步 bash | 隔离命名空间自毁式验证 |
+
+### 2.1 只跑单测（最快，无副作用）
+
+```bash
+uv run pytest tests/unit
+# → 103 passed in ~4s
+```
+
+### 2.2 单测 + 集成
+
+```bash
+# 起本地依赖
+docker compose -f dev/compose.yaml up -d
+
+# 跑
+uv run pytest tests/unit tests/integration
+# → 107 passed in ~5s
+```
+
+集成测试的关键机制：`OSS_S3_COMPAT=true` 让 `OssClient.from_env()` 走 boto3 后端，同一份代码连本地 MinIO；生产不设这个变量走 `oss2` 直连阿里云 OSS。
+
+### 2.3 覆盖率
+
+```bash
+uv run pytest --cov=src/vista_fc --cov=handlers --cov-report=html
 open htmlcov/index.html
 ```
 
-### 3.4 本地 MinIO 集成（OSS_S3_COMPAT）
-
-**为什么需要这个开关**：`oss2` 走阿里云 OSS 签名协议，MinIO 只认 AWS S3 sigv4 — 两者不兼容。开 `OSS_S3_COMPAT=true` 让 `OssClient.from_env()` 切到 boto3 后端，同样的公共 API，换一套网络协议。
+### 2.4 按名字筛选
 
 ```bash
-# 本地（.env.local）
-OSS_S3_COMPAT=true
-OSS_ENDPOINT=http://localhost:9000
-
-# 生产（FC 环境变量）— 不要设置 OSS_S3_COMPAT
-# 留空 → 走 oss2 → 走阿里云真 OSS
-```
-
-代码里**无条件**用 `OssClient.from_env()`，同一份代码，环境自动切换。
-
-测试里也通过 env var 切换：
-
-```python
-# tests/integration/test_minio_real.py
-@pytest.fixture
-def minio_env(monkeypatch):
-    monkeypatch.setenv("OSS_S3_COMPAT", "true")
-    monkeypatch.setenv("OSS_ENDPOINT", "http://localhost:9000")
-    # ...
+uv run pytest -k "factor_detect"
 ```
 
 ---
 
-## 4. 镜像与部署
+## 3. 模拟真实环境测试
 
-### 4.1 构建 Docker 镜像
+**目标：在本地跑完整的 FC 协议栈**——构建生产镜像 → 容器里 HTTP POST `/invoke` → 真 vista 读写本地 MinIO 报告。这是部署前的最后一道防线，能抓到单测/集成都抓不到的协议层问题（adapter 启动、env 解析、handler args、镜像层依赖缺失等）。
 
-**⚠️ 已知阻塞**：生产镜像需要 `vista` 可安装到 linux 容器内。当前 `pyproject.toml` 用本地 path 引 vista，在 docker build context 里路径不存在。解锁方案见 §8。
+### 3.1 构建镜像
 
-**本地构建**（单平台，快）：
+**只支持 `linux/amd64`**：私有源没发布 `chan-factor-rs` / `chanfactor` 的 linux aarch64 wheel，多 arch 构建解析失败。
 
 ```bash
-scripts/build_image.sh --dev
-# → 产出 registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base:dev (约 482 MB)
+scripts/build_image.sh --dev           # 产出 :dev，约 1.8 GB
+scripts/build_image.sh                 # 产出 :<git_sha>（push 用）
 ```
 
-**冒烟镜像本身（不需 vista）**：
+首次构建 ~6 分钟（apt 走阿里云镜像源已加速）；后续增量构建 ~30 秒（buildx 缓存）。
+
+### 3.2 容器内 smoke
 
 ```bash
-# 起容器 + 指定一个无害的 callable 作为 handler
-docker run -d --rm --name vc-smoke -p 9877:9000 \
+# import 链
+docker run --rm --entrypoint python \
   registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base:dev \
-  vista_fc.contracts.common:TenantContext
+  -c "import vista, wbt.mock; print('OK')"
 
-sleep 2
-curl -s http://localhost:9877/health  # → {"status":"ok"}
+# adapter 启动 + /health
+docker run -d --rm --name vc-smoke -p 9878:9000 \
+  registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base:dev \
+  handlers.factor_detect:handler
+curl -s http://localhost:9878/health   # → {"status":"ok"}
 docker rm -f vc-smoke
 ```
 
-### 4.2 推送到 ACR
+### 3.3 真 handler 端到端调用
 
-先 `docker login` 一次：
+先往 MinIO 塞测试数据：
 
 ```bash
-docker login registry.cn-hangzhou.aliyuncs.com
-# user / password 来自阿里云 ACR 控制台 → 访问凭证
+docker run --rm --network dev_default \
+  -v "$PWD/tests/fixtures/duckdb:/seed:ro" \
+  --entrypoint sh minio/mc:latest -c '
+    mc alias set l http://minio:9000 dev devdevdev &&
+    mc cp /seed/mini_factors.duckdb \
+       l/vista-fc-dev/user_data/u_local_dev/research/EXP_LOCAL/factors.duckdb
+  '
 ```
 
-然后：
+然后用 `docker_run.sh` 起临时容器、POST `/invoke`、自动清理：
 
 ```bash
+scripts/docker_run.sh factor_detect tests/fixtures/events/factor_detect_min.json
+# → 打印响应 JSON，status 应为 "succeeded"
+# → 响应落到 /tmp/vista_fc_invoke_resp.json
+```
+
+脚本行为：
+- 默认宿主端口 `9878`（9000 被 MinIO 占了），`PORT=xxxx` 可覆盖
+- 自动把 `.env.local` 里的 `localhost` 改写成 `host.docker.internal`，并 `--add-host` 注入
+- 容器退出时自动 `docker rm -f`
+
+### 3.4 `s local invoke`（走 serverless-devs 协议）
+
+```bash
+scripts/local_invoke.sh factor-detect                       # 一次性 invoke
+scripts/local_invoke.sh factor-detect --server              # 常驻 HTTP server
+scripts/local_invoke.sh factor-detect --debug               # 带 debugpy 附加
+```
+
+比 `docker_run.sh` 多走一层 `s` CLI（跟真线上 CI 路径最接近），代价是启动慢。
+
+### 3.5 当前 E2E 覆盖
+
+| 函数 | E2E 验证 | 产物上传 | 备注 |
+|---|---|---|---|
+| factor-plan | ✅（走 LLM）| ✅ `factor_routes.toml` ~3 KB | 本地 `CLAUDE_MODEL=glm-4.7`（智谱反代）已验证 |
+| factor-detect | ✅（mini_factors fixture）| ✅ `detect_*.json` 157 B | 空数据，走逻辑分支覆盖，不触 `vista.data.xy` |
+| factor-builder | ❌ | — | 需要 ANTHROPIC_API_KEY + `factor_routes.toml` 上游产物，未单独验证 |
+| factor-duplicate | ❌ | — | 需要真实 factors.duckdb + route/problem codes，未写 fixture |
+| factor-evaluate | ❌ | — | 同上 |
+| factor-filter | ❌ | — | 需要 factor_db（duckdb 或 CH），未验证 |
+| strategy-backtest | ❌ | — | 需要 `CZSC_TOKEN` + `strategy.toml`，未验证 |
+| vista-realtime | ❌ | — | 需要 `CZSC_TOKEN` + `strategy.toml`，未验证 |
+
+**已知 service 层产物上传风险**（检查过源码）：
+- `factor_plan.py` — 已修复（原代码找不存在的 `toml_text` 字段，上传 0 字节）
+- `factor_builder.py` — `data.get("routes", [])` 依赖 vista `FactorBuilder.run()` 返回有 `routes` 字段；未经真实 LLM 调用验证，潜在风险
+- `factor_detect.py` / `factor_duplicate.py` / `factor_evaluate.py` — 直接 `json.dumps(dumped, …)` 落盘，不依赖字段存在性，产物非空
+
+### 3.6 已有 fixture event
+
+`tests/fixtures/events/` 目前提供：`factor_detect_min.json` / `factor_plan_min.json` / `vista_realtime_min.json`。其他函数自己照 `XxxInput` DTO 拼：
+
+```bash
+uv run python -c "
+from vista_fc.contracts import FactorEvaluateInput
+import json
+print(json.dumps(FactorEvaluateInput.model_json_schema(), indent=2, ensure_ascii=False))
+"
+```
+
+---
+
+## 4. 真实环境部署
+
+```
+本地 uv sync          阿里云 ACR                 阿里云 FC 3.0
+     │                   ▲                         ▲
+     ▼                   │                         │
+  pytest             build_image → push         s deploy
+                                                   │
+                                                   ▼
+                                      8 FC 函数 + 3 FnF 流上线
+```
+
+### 4.1 阿里云资源先决条件
+
+一次性准备：
+
+- 部署账号（RAM 用户）：`AliyunFCFullAccess` + `AliyunContainerRegistryFullAccess`
+- ACR 仓库 `vista/vista-fc-base`（个人版或企业版）
+- VPC + vswitch + 安全组（FC 函数运行网络）
+- NAS 文件系统 + 挂载点（k 线缓存）
+- OSS Bucket：至少 `vista-fc-dev` / `vista-fc-preflight` / `vista-fc-prod`
+- ClickHouse 对 FC 所在 VPC 可达（8123 入站放通）
+- RAM 角色：`fc-vista-role`（函数执行）、`fnf-vista-role`（FnF 调 FC）
+
+### 4.2 配置 serverless-devs 访问
+
+```bash
+s config add --access-alias dev   # 输入 AK/SK，用开发账号
+s config add --access-alias prod  # 输入 AK/SK，用生产账号
+```
+
+### 4.3 推镜像
+
+```bash
+# 一次性 login
+docker login registry.cn-hangzhou.aliyuncs.com
+
+# 构建 + 推（linux/amd64）
 GIT_SHA=$(git rev-parse --short HEAD)
 scripts/push_image.sh
-# → 产出 multi-arch 镜像 :<git_sha> 和 :main
+# → 产出 :<git_sha> 和 :main 两个 tag
 ```
 
-### 4.3 部署到阿里云 FC
+### 4.4 环境变量
 
-1. 配置 `s` 访问凭证：
-
-```bash
-s config add --access-alias dev  # 按提示输入 AK/SK
-s config add --access-alias prod
-```
-
-2. 设置环境变量（每个环境一份）：
+部署前导出（每环境一份）：
 
 ```bash
 export FC_REGION=cn-hangzhou
@@ -285,248 +346,272 @@ export ANTHROPIC_API_KEY=<from secret store>
 export GIT_SHA=$(git rev-parse --short HEAD)
 ```
 
-3. 部署：
+### 4.5 部署
 
 ```bash
-# 校验 s.yaml 语法 + 引用
+# 静态校验
 s verify
-
-# 静态校验 FDL
 uv run python scripts/validate_flow.py
 
-# 部署（按选择的 access 别名）
+# 全量部署
 s deploy --access dev --assume-yes
 
-# 只部署某一个资源
+# 单资源部署（迭代时更快）
 s deploy factor-detect --access dev
 s deploy research-pipeline-flow --access dev
 ```
 
-### 4.4 preflight 部署链路校验
-
-在部署到正式 dev 之前，用**隔离命名空间**跑 11 步校验（ACR 推拉 / RAM / VPC / NAS / OSS / ClickHouse / flow 执行）：
+### 4.6 preflight 隔离验证（部署到 dev 前推荐）
 
 ```bash
-export FC_ACCESS=dev-preflight        # 独立的低权限子账号
+export FC_ACCESS=dev-preflight
 export FC_SUFFIX="-preflight-$(git rev-parse --short HEAD)"
 export OSS_BUCKET=vista-fc-preflight
 
 bash tests/deploy_preflight/run_all.sh
-# → 11 步每一步的输出写到 tests/deploy_preflight/artifacts/<date>/
-# → 任一步失败即 exit 1，最后一步是 99_cleanup.sh 自动拆资源
+# → 11 步：ACR 推拉 / RAM / VPC / NAS / OSS / ClickHouse / flow 执行
+# → 任一步失败 exit 1，99_cleanup.sh 最后自动拆资源
 ```
 
----
-
-## 5. 调用函数
-
-### 5.1 同步调用（`factor-detect` 类短任务）
+### 4.7 线上冒烟（部署后）
 
 ```bash
-# 本地 MinIO 已有 factors.duckdb 的前提下：
-EVENT='{
-  "tenant": {
-    "user_hash": "u_abc",
-    "workspace_id": "EXP_001",
-    "workspace_kind": "research",
-    "run_id": "run-20260422-001",
-    "requested_at": "2026-04-22T10:00:00Z"
-  },
-  "payload": {
-    "factors_db_uri": "oss://vista-fc-dev/user_data/u_abc/research/EXP_001/factors.duckdb",
-    "max_workers": 4,
-    "timeout": 60
-  }
-}'
-
-# 线上调用
-s cli fc3 invoke \
-  --region cn-hangzhou \
-  --function-name factor-detect \
-  -e "$EVENT" \
-  --access dev
+FC_SMOKE_READY=1 uv run pytest tests/smoke --access dev
 ```
 
-### 5.2 启动完整流水线（FnF）
+### 4.8 回滚
+
+不走 git revert，换镜像 tag：
 
 ```bash
-# plan → build → detect → duplicate → evaluate → filter
-INPUT='{
-  "tenant": {...},
-  "user_input": "动量反转类因子挖掘",
-  "plan_model": "claude-opus-4-7",
-  "factor_numbers": 20,
-  "batch_size": 5,
-  "build_workers": 2,
-  "detect_workers": 4,
-  "dup_workers": 4,
-  "eval_workers": 8,
-  "route_codes": ["R001", "R002"],
-  "problem_codes": ["P001"],
-  "eval_models": ["MA001", "CSSorting_equal"],
-  "fee_rate": 0.0,
-  "evaluate_methods": [],
-  "filter_methods": [],
-  "positive_extractor": "ratio_across_problems",
-  "top_n": 20,
-  "author": "jun",
-  "outsample_sdt": "20250101"
-}'
-
-s cli fnf StartExecution \
-  --name research-pipeline \
-  --execution-name "run-$(date +%s)" \
-  --input "$INPUT" \
-  --access dev
-
-# 查进度
-s cli fnf DescribeExecution \
-  --name research-pipeline \
-  --execution-name "run-..." \
-  --access dev
-```
-
-### 5.3 vista-realtime 定时触发
-
-`vista-realtime` 函数默认有 timer trigger，每分钟自动执行。启用/禁用通过 s.yaml 变量：
-
-```bash
-export REALTIME_TRIGGER_ENABLE=true
-s deploy vista-realtime --access prod
-```
-
----
-
-## 6. 监控与日志
-
-**日志**（SLS）：
-
-```bash
-# 跟踪某函数最近日志
-s logs factor-detect --tail --access dev
-
-# 按 run_id 过滤（每条 log 都带这些字段）
-# 在 SLS 控制台执行：
-# * | where function_name='factor-evaluate' and run_id='run-20260422-001' | order by __time__ desc
-```
-
-**指标**：
-- 每个 handler 在 `EnvelopeOut.metrics` 里回报：`elapsed_s`、`total_factors`、`passed/failed` 等
-- FC 原生 p99 耗时、错误率、并发、Instance 数
-- CloudMonitor 告警规则见 `docs/RUNBOOK.md`
-
-**FnF 执行历史**：
-```bash
-s cli fnf ListExecutions --name research-pipeline --access dev
-```
-
----
-
-## 7. 故障排除
-
-### 单测全红
-
-```bash
-# 清 venv 重装
-rm -rf .venv uv.lock
-uv sync
-uv run pytest
-```
-
-### `uv sync` 找不到 chan-factor-rs
-
-vista 的传递依赖 `chan-factor-rs` 在 `zbczsc-dev` 私有源，无 token 默认拉不到。确认 `../cursorPro/vista/.venv` 已经装过（该 venv 触发 uv 把 wheel 缓存到 `~/.cache/uv/`）。
-
-### MinIO 集成测试失败 "XMinioStorageFull"
-
-主机磁盘空间不足（<1 GB）。清理后重试：
-
-```bash
-docker compose -f dev/compose.yaml down -v
-# 释放宿主机磁盘
-```
-
-### `s local invoke` 失败 "image not found"
-
-需要先 build + 推镜像（`scripts/build_image.sh --dev`），或先 pull：
-
-```bash
-docker pull registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base:dev
-```
-
-### 函数返回 `{"status":"failed","error":{"code":"INPUT_VALIDATION"}}`
-
-payload 不符合 pydantic DTO。检查 `EnvelopeIn[<Input>].model_json_schema()`：
-
-```bash
-uv run python -c "
-from vista_fc.contracts import FactorDetectInput
-import json
-print(json.dumps(FactorDetectInput.model_json_schema(), indent=2, ensure_ascii=False))
-"
-```
-
-### `OSS_ETAG_CONFLICT`
-
-同一 workspace 被并发调用。调用层必须用 `executionName = <workspace_id>-<timestamp>` 强唯一。短期可手动 Stop 其中一个 execution。
-
-### ClickHouse 连不上
-
-FC 函数需要在和 CH 同一个 VPC / 可达的 vswitch / 安全组放通 8123 入站。`08_ch_probe.sh` 可以单独测。
-
-### 回滚
-
-不走 git revert，只换镜像 tag：
-
-```bash
-# 找上一个正常版本
 git log --oneline | head -5
-
-# 用老 sha 部署
 GIT_SHA=<old_sha> s deploy --access prod --assume-yes
 ```
 
 ---
 
-## 8. 已知阻塞项
+## 5. 前端接入
 
-### 8.1 Docker 镜像里装 vista（影响 `s local invoke` 的完整 FC 协议测试）
+**前端最终调用形态：一组 HTTPS API → 阿里云 FC → vista 业务。**
 
-`pyproject.toml` 的 `vista = { path = "../../cursorPro/vista", editable = true }` 相对路径在 docker build context 里解析不到；且生产 linux 容器需要 linux 版 `chan-factor-rs` wheel，只存 `zbczsc-dev` 私有源。
+设计原则是**灵活组合**：每个函数都是独立的 HTTP endpoint，FnF 流把常用的端到端串好；前端可以按场景任意选：
 
-**解锁路径**：
+| 调用模式 | 用什么 | 典型场景 |
+|---|---|---|
+| **单函数** | 直接 POST 到 `<fn>` 的 HTTP 触发器 | 只要一个步骤的结果（如只跑 `factor-detect` 体检、只跑 `factor-evaluate` 评估） |
+| **全流程** | POST 到 BFF 入口 → FnF `StartExecution` 启动 `research-pipeline` / `research-full` / `backtest-fanout` | 一键从 idea → 策略 TOML |
+| **自定义组合** | 前端自己按顺序调多个单函数，用返回的 `artifacts[].oss_uri` 串起来 | UI 想允许用户中途调参、分步审核、局部重跑 |
 
-**方案 A（推荐）**：CI 注入 `UV_INDEX_ZBCZSC_DEV_{USERNAME,PASSWORD}`，改回私有索引
+核心契约：所有函数和 FnF 流的入参都是 `EnvelopeIn<Payload>`、出参都是 `EnvelopeOut<Payload>`（见 [§5.4](#54-统一调用契约)），串起来时只需把上一步 `artifacts[i].oss_uri` 塞到下一步对应字段即可。
 
-```toml
-# pyproject.toml
-[tool.uv.sources]
-vista = { index = "zbczsc-dev" }
+目前函数只有内部 SDK 调用（`s cli fc3 invoke`），**对前端开放需要先加触发器或 API 网关**。下面三种方案可任意组合。
+
+### 5.1 方案 A：FC 3.0 HTTP 触发器（单函数调用）
+
+每个函数加一个 HTTP 触发器，FC 生成 `https://<account>.<region>.fcapp.run/<fn>` 形态的 URL。`s.yaml` 在对应资源下加：
+
+```yaml
+factor-detect:
+  component: fc3
+  props:
+    function:
+      functionName: factor-detect${vars.functionSuffix}
+      # ...其它不变
+    triggers:
+      - name: http
+        type: http
+        config:
+          authType: function   # 前端需带签名或 token
+          methods: [POST]
+          disableURLInternet: false
 ```
 
-Docker 构建脚本已有 `--secret id=uv_index,src=.env.build` 能注入，只需把凭据放 `.env.build`（gitignored）。
+前端调用（同步短任务）：
 
-**方案 B**：在 docker build 之前先 `uv build` vista + 私有依赖成 wheel，拷进 build context
+```js
+const res = await fetch("https://<account>.cn-hangzhou.fcapp.run/factor-detect", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "<FC-signed-token>",   // 见阿里云 FC 签名文档
+  },
+  body: JSON.stringify({
+    tenant: { user_hash, workspace_id, workspace_kind: "research", run_id, requested_at },
+    payload: { factors_db_uri: "oss://...", max_workers: 4, timeout: 60 },
+  }),
+});
+const out = await res.json();
+// out.status === "succeeded"
+// out.payload === FactorDetectOutput
+// out.error === null | { code, message, retriable, trace_id }
+```
+
+**多个单函数串联调用**（前端/BFF 把 oss_uri 传下去）：
+
+```js
+// 步骤 1：挖因子
+const plan = await callFn("factor-plan", { tenant, payload: { user_input, plan_model, ...}});
+
+// 步骤 2：基于 plan 的 artifact 继续跑 builder
+const build = await callFn("factor-builder", {
+  tenant,
+  payload: {
+    route_codes: plan.payload.route_codes,
+    factor_plan_uri: plan.artifacts.find(a => a.kind === "factor_plan_json").oss_uri,
+    // ...
+  },
+});
+
+// 步骤 3：体检
+const detect = await callFn("factor-detect", {
+  tenant,
+  payload: { factors_db_uri: build.payload.factors_db_uri, max_workers: 4 },
+});
+```
+
+前端可以停在任何一步、回退重跑、修改参数，比调 FnF 更灵活，代价是串联逻辑在前端/BFF 里。
+
+> FnF 流不能直接开 HTTP trigger — 需要前端先调一个 BFF 函数，由 BFF 去 `StartExecution`。见方案 C。
+
+### 5.2 方案 B：阿里云 API 网关（统一入口，推荐生产用）
+
+- 网关统一做**鉴权、限流、CORS、签名验签、字段级审计**
+- 对前端暴露干净的 `https://api.example.com/v1/factor-detect`，后端路由到内部 FC 函数
+- FnF 流可以走网关的「函数工作流后端」类型，前端统一体验
+
+部署不在本仓库内，参考阿里云 API 网关 → 创建 API → 后端服务类型选「函数计算」即可。
+
+### 5.3 方案 C：BFF + FnF（全流程调用）
+
+长流程（完整 research pipeline / 全量 backtest fanout）必须走 FnF —— FnF 是异步执行引擎，本身不能直接 HTTP 触发，需要一个薄 BFF 函数把 HTTP → `StartExecution` 做桥。
+
+典型布局（新增 2 个 BFF 函数，不动现有 8 个业务函数）：
+
+| BFF 函数 | 作用 | 前端看到的 API |
+|---|---|---|
+| `flow-start` | 解析 `{flowName, input}`，调 `StartExecution`，立即返回 `executionName` | `POST /flow-start` |
+| `flow-status` | 根据 `executionName` 调 `DescribeExecution`，返回 `{status, currentStep, output?}` | `GET /flow-status?id=xxx` |
+
+```
+前端
+ │   POST /flow-start {"flowName":"research-pipeline","input":{tenant,...}}
+ ▼
+flow-start (FC)  ── StartExecution ──►  FnF: research-pipeline
+                                        │  plan → build → detect → …
+                                        ▼
+                                        （异步执行，可能几分钟到几小时）
+前端
+ │   轮询 GET /flow-status?id=<executionName>
+ ▼
+flow-status (FC) ── DescribeExecution ──►  FnF
+                                        ◄── {status, output?}
+```
+
+实现参考（BFF 函数大概 30 行 Python，不在本仓库现成代码里，下个迭代加）：
+
+```python
+# handlers/flow_start.py（待实现）
+from alibabacloud_fnf20190315.client import Client
+def handler(event, context):
+    fnf = Client(...)
+    resp = fnf.start_execution(StartExecutionRequest(
+        flow_name=event["payload"]["flowName"] + FC_SUFFIX,
+        execution_name=f'{tenant.workspace_id}-{int(time.time())}',
+        input=json.dumps(event["payload"]["input"]),
+    ))
+    return {"executionName": resp.name, "status": "Running", ...}
+```
+
+前端调用：
+
+```js
+// 启动
+const { executionName } = await fetch("/flow-start", {
+  method: "POST",
+  body: JSON.stringify({
+    flowName: "research-pipeline",
+    input: { tenant, user_input, plan_model: "claude-opus-4-7", ...fullPipelineArgs },
+  }),
+}).then(r => r.json());
+
+// 轮询（2-5s 间隔，直到 status ∈ {Succeeded, Failed, Stopped}）
+let status = "Running";
+while (status === "Running") {
+  await sleep(3000);
+  const r = await fetch(`/flow-status?id=${executionName}`).then(r => r.json());
+  status = r.status;
+  updateUI(r.currentStep);
+}
+```
+
+三个 FnF 流可选：
+
+- `research-pipeline` — `plan → build → detect → duplicate → evaluate → filter`
+- `backtest-fanout` — `ForEach` 批量回测多个策略 TOML
+- `research-full` — 上面两者合一（factor 挖掘 + 每个入选策略回测）
+
+### 5.4 统一调用契约
+
+```ts
+// 入参
+type EnvelopeIn<Payload> = {
+  tenant: {
+    user_hash: string;
+    workspace_id: string;
+    workspace_kind: "research" | "realtime" | "backtest";
+    run_id: string;
+    requested_at: string;   // ISO 8601
+  };
+  payload: Payload;         // 每个函数有自己的 XxxInput DTO
+};
+
+// 出参
+type EnvelopeOut<Payload> = {
+  tenant: EnvelopeIn["tenant"];
+  status: "succeeded" | "failed";
+  artifacts: Array<{ kind: string; oss_uri: string; size_bytes: number; sha256: string }>;
+  metrics: Record<string, number>;
+  payload: Payload | null;  // 失败时 null
+  error: null | {
+    code: string;          // e.g. "INPUT_VALIDATION" / "OSS_READ_FAIL" / "VISTA_LOGIC_ERROR"
+    message: string;
+    retriable: boolean;
+    trace_id: string;
+  };
+};
+```
+
+DTO 的 JSON schema 从代码生成：
 
 ```bash
-# 需要私有源 token 才能 pip download 私有 wheel
-uv build --wheel --out-dir dist/ ../cursorPro/vista
-uv pip download chan-factor-rs chanfactor czsc wbt --python-platform linux -d dist/ \
-  --index-url $PRIVATE_INDEX
-
-# Dockerfile 改为：
-# COPY dist/*.whl /tmp/wheels/
-# RUN uv sync --frozen --no-dev --find-links /tmp/wheels
+uv run python -c "
+from vista_fc.contracts import FactorDetectInput, FactorDetectOutput
+import json
+print(json.dumps({
+  'input':  FactorDetectInput.model_json_schema(),
+  'output': FactorDetectOutput.model_json_schema(),
+}, indent=2, ensure_ascii=False))
+"
 ```
 
-### 8.2 无线上凭据
+建议给前端导出一份 `schemas/*.json` 让他们生成 TS 类型。
 
-`tests/deploy_preflight/` 和 `tests/smoke/` 需要真阿里云资源。当前没有这些凭据时两者都会跳过。开通后：
+### 5.5 函数到 HTTP 语义映射
 
-1. 创建前述所有资源（RAM 角色、VPC、NAS、OSS、ACR、SLS）
-2. 填 GitHub Secrets（CI 用）或 `~/.s/access.yaml`（本地用）
-3. 跑 preflight 做一次完整校验
-4. 跑 smoke 验证部署活着
+每个函数都同时支持所有三种方案，下表只是**推荐默认值**：
+
+| 函数 | 单独调（A/B） | 作为流水线一步（C） | 典型耗时 |
+|---|---|---|---|
+| factor-plan | ✅ 同步 HTTP | ✅ `research-pipeline` 首节点 | 10–30 s |
+| factor-builder | ⚠️ 超过 HTTP 60s 限，建议异步 | ✅ 必须 | 10 min – 1 h |
+| factor-detect | ✅ 同步 HTTP | ✅ | 5–30 s |
+| factor-duplicate | ✅ 同步 HTTP | ✅ | 10–60 s |
+| factor-evaluate | ⚠️ 可能超时，建议异步 | ✅ | 30 s – 5 min |
+| factor-filter | ✅ 同步 HTTP | ✅ | 5–10 s |
+| strategy-backtest | ⚠️ 建议异步 | ✅ `backtest-fanout` 的 ForEach body | 1–10 min |
+| vista-realtime | timer 触发，不对前端暴露 | — | — |
+
+> HTTP trigger 最大 900 s（FC 3.0）；超过就走 FnF。实际前端体验建议 >10 s 的都加 loading state 或改异步。
 
 ---
 
@@ -536,14 +621,14 @@ uv pip download chan-factor-rs chanfactor czsc wbt --python-platform linux -d di
 vista_sever/
 ├── src/vista_fc/            业务包
 │   ├── contracts/           8 组 pydantic DTO + common envelope
-│   ├── storage/             oss_client (含 s3-compat) / workspace / nas_cache / uri
+│   ├── storage/             oss_client (oss2 + s3-compat) / workspace / nas_cache / uri
 │   ├── runtime/             adapter (HTTP /invoke) / logging / errors / context
 │   └── services/            8 个业务服务（调 vista）
 ├── handlers/                FC 入口 (8 thin handlers) + _base.run_handler
 ├── flows/                   3 个 FnF FDL
 ├── tests/
-│   ├── unit/                快速单测（~104 个）
-│   ├── integration/         真 vista + 真 MinIO
+│   ├── unit/                快速单测（103 个）
+│   ├── integration/         真 vista + 真 MinIO（4 个）
 │   ├── smoke/               线上冒烟（需 FC_SMOKE_READY=1）
 │   ├── deploy_preflight/    11 步 bash 脚本
 │   └── fixtures/            mini_factors.duckdb / events/*.json
@@ -558,20 +643,21 @@ vista_sever/
 │   └── validate_flow.py     FDL 静态校验器
 ├── docs/
 │   ├── GUIDE.md             本文件
-│   ├── RUNBOOK.md           运维 playbook
-│   └── superpowers/         设计文档 + 实现计划
+│   ├── RUNBOOK.md           运维 playbook + 故障排除
+│   └── superpowers/         设计文档
 ├── s.yaml                   serverless-devs 主清单（8 函数 + 3 flow）
-├── Dockerfile               多阶段构建
+├── Dockerfile               多阶段构建（python:3.12-slim + linux/amd64）
 ├── pyproject.toml           依赖 + 工具配置
-└── .env.example             环境变量模板
+└── .env.example             本地环境变量模板
 ```
 
 ---
 
 ## 参考
 
+- [RUNBOOK.md](RUNBOOK.md) — 运维剧本 + 故障排除 + 告警处置
 - [设计文档](superpowers/specs/2026-04-22-vista-fc-encapsulation-design.md) — 完整架构决策
-- [RUNBOOK.md](RUNBOOK.md) — 运维剧本
-- [Serverless Devs 文档](https://www.serverless-devs.com/)
+- [Serverless Devs](https://www.serverless-devs.com/)
 - [阿里云函数计算 FC 3.0](https://www.aliyun.com/product/fc)
 - [函数工作流 FnF](https://www.aliyun.com/product/fnf)
+- [API 网关 + FC 集成](https://help.aliyun.com/document_detail/54788.html)

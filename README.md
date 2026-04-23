@@ -5,25 +5,27 @@
 ## 快速开始
 
 ```bash
-# 1. 装依赖
+# 1. 装依赖（vista / chan-factor-rs / chanfactor 会从 zbczsc-dev 私有源解析，无需认证）
 uv sync
 
 # 2. 复制本地环境配置
-cp .env.example .env.local  # 编辑填入私有源 token / 阿里云 ak/sk
+cp .env.example .env.local  # 编辑填入阿里云 ak/sk（本地 MinIO 模式的占位已在文件里）
 
 # 3. 起本地依赖（minio + clickhouse）
 docker compose -f dev/compose.yaml up -d
 
-# 4. 跑单测
-uv run pytest tests/unit
+# 4. 跑测试
+uv run pytest tests/unit tests/integration    # 107 passed
 
-# 5. 本地调单个函数
+# 5. 本地调单个函数（linux/amd64 镜像）
 scripts/build_image.sh --dev
-s local invoke factor-detect --event-file tests/fixtures/events/factor_detect_min.json --env-file .env.local
+scripts/docker_run.sh factor_detect tests/fixtures/events/factor_detect_min.json
 ```
 
 ## 文档
 
+- **完整指南**：[docs/GUIDE.md](docs/GUIDE.md) — 本地测试、镜像构建、阿里云部署、调用方式、故障排除
+- 运维剧本：[docs/RUNBOOK.md](docs/RUNBOOK.md)
 - 设计文档：[docs/superpowers/specs/2026-04-22-vista-fc-encapsulation-design.md](docs/superpowers/specs/2026-04-22-vista-fc-encapsulation-design.md)
 
 ## 函数

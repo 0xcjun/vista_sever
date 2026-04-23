@@ -239,3 +239,4 @@ tests/fixtures/parquet/*.parquet
 # macOS
 .DS_Store
 dev/data/
+.idea/

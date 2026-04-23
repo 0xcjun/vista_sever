@@ -17,7 +17,7 @@ from vista_fc.contracts.factor_duplicate import (
     FactorDuplicateInput,
     FactorDuplicateOutput,
 )
-from vista_fc.services._support import pull_object, push_object
+from vista_fc.services._support import ensure_research_data, pull_object, push_object
 from vista_fc.storage.workspace import WorkspaceStorage
 
 
@@ -28,6 +28,7 @@ def factor_duplicate_service(
     workspace: WorkspaceStorage,
 ) -> FactorDuplicateOutput:
     db_local, _ = pull_object(workspace, oss_uri=payload.factors_db_uri)
+    ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     model_cfg = None
     if payload.model_config_uri:
@@ -53,10 +54,16 @@ def factor_duplicate_service(
     key = f"user_data/{tenant.user_hash}/research/{tenant.workspace_id}/reports/duplicate_{tenant.run_id}.json"
     uri = f"oss://{workspace.oss.bucket_name}/{key}"
     artifact = push_object(workspace, local_path=report_local, oss_uri=uri, kind="report_json")
+    # 回写 duckdb (duplicate 内部对重复因子打 soft-delete 标签)
+    push_object(workspace, local_path=db_local, oss_uri=payload.factors_db_uri, kind="duckdb")
 
+    problem_stats = dumped.get("problem_stats", []) or []
+    total_input = sum(int(p.get("input", 0)) for p in problem_stats)
+    total_rejected = int(dumped.get("total_rejected", 0))
     return FactorDuplicateOutput(
-        total_checked=int(dumped.get("total_checked", 0)),
-        dropped=int(dumped.get("dropped", 0)),
-        kept=int(dumped.get("kept", 0)),
+        total_input=total_input,
+        total_rejected=total_rejected,
+        total_survived=max(total_input - total_rejected, 0),
+        elapsed_seconds=float(dumped.get("elapsed_seconds", 0.0)),
         report_artifact=artifact,
     )

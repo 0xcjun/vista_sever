@@ -30,8 +30,15 @@ def test_happy_path(
     db_local.write_bytes(b"x")
     workspace_mock.pull_to_tmp.return_value = (db_local, '"e"')
 
+    # vista FactorDuplicateReport 的真实字段
     mock_report = MagicMock()
-    mock_report.model_dump.return_value = {"total_checked": 50, "dropped": 10, "kept": 40}
+    mock_report.model_dump.return_value = {
+        "problem_stats": [
+            {"problem_code": "P1", "input": 50, "survived": 40, "rejected": 10},
+        ],
+        "total_rejected": 10,
+        "elapsed_seconds": 1.23,
+    }
     patched_dup.return_value = mock_report
 
     workspace_mock.push_from_tmp.return_value = ArtifactRef(
@@ -50,6 +57,7 @@ def test_happy_path(
         ),
         workspace=workspace_mock,
     )
-    assert out.total_checked == 50
-    assert out.dropped == 10
-    assert out.kept == 40
+    assert out.total_input == 50
+    assert out.total_rejected == 10
+    assert out.total_survived == 40
+    assert out.elapsed_seconds == 1.23

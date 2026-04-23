@@ -37,13 +37,14 @@ def test_input_threshold_bounds() -> None:
 
 def test_output_counts() -> None:
     out = FactorDuplicateOutput(
-        total_checked=200,
-        dropped=50,
-        kept=150,
+        total_input=200,
+        total_rejected=50,
+        total_survived=150,
+        elapsed_seconds=1.0,
         report_artifact=ArtifactRef(
             kind="report_json",
             oss_uri="oss://b/duplicate_report.json",
             size_bytes=3_000,
         ),
     )
-    assert out.dropped + out.kept == out.total_checked
+    assert out.total_rejected + out.total_survived == out.total_input

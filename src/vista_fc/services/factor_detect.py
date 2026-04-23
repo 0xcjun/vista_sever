@@ -19,7 +19,7 @@ from vista.utils.factor_detect import factor_detect as _vista_factor_detect
 
 from vista_fc.contracts.common import TenantContext
 from vista_fc.contracts.factor_detect import FactorDetectInput, FactorDetectOutput
-from vista_fc.services._support import pull_object, push_object
+from vista_fc.services._support import ensure_research_data, pull_object, push_object
 from vista_fc.storage.workspace import WorkspaceStorage
 
 if TYPE_CHECKING:
@@ -37,6 +37,7 @@ def factor_detect_service(
 ) -> FactorDetectOutput:
     # 1. pull factors.duckdb
     db_local, _etag = pull_object(workspace, oss_uri=payload.factors_db_uri)
+    ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     # 2. optional problems_map
     problems_map: ProblemsMap | None = None
@@ -59,7 +60,7 @@ def factor_detect_service(
     report_local.parent.mkdir(parents=True, exist_ok=True)
     report_local.write_text(json.dumps(report_dict, ensure_ascii=False), encoding="utf-8")
 
-    # 5. push
+    # 5. push report + 回写更新后的 duckdb (detect 在库里打了 factor_detect 标签 + 软删除失败因子)
     report_key = f"user_data/{tenant.user_hash}/research/{tenant.workspace_id}" f"/reports/detect_{tenant.run_id}.json"
     report_uri = f"oss://{workspace.oss.bucket_name}/{report_key}"
     artifact = push_object(
@@ -68,6 +69,7 @@ def factor_detect_service(
         oss_uri=report_uri,
         kind="report_json",
     )
+    push_object(workspace, local_path=db_local, oss_uri=payload.factors_db_uri, kind="duckdb")
 
     # vista's FactorDetectBatchReport uses `total` not `total_factors`;
     # we fall back to `total_factors` in case the report shape ever changes.

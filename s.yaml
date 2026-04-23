@@ -40,15 +40,31 @@ common-log: &common-log
   enableRequestMetrics: true
 
 common-env: &common-env
-  OSS_REGION:        ${vars.region}
-  OSS_BUCKET:        ${vars.ossBucket}
-  NAS_CACHE_ROOT:    /mnt/vista-cache
-  CLICKHOUSE_URL:    ${env.CLICKHOUSE_URL}
-  CLICKHOUSE_USER:   ${env.CLICKHOUSE_USER}
-  CLICKHOUSE_PASS:   ${env.CLICKHOUSE_PASS}
-  ANTHROPIC_API_KEY: ${env.ANTHROPIC_API_KEY|""}
-  LOG_FORMAT:        json
-  TZ:                Asia/Shanghai
+  # 存储
+  OSS_REGION:           ${vars.region}
+  OSS_BUCKET:           ${vars.ossBucket}
+  NAS_CACHE_ROOT:       /mnt/vista-cache
+
+  # vista 因子库（默认 duckdb 落 NAS；如要走 ClickHouse，设 VISTA_DB_TYPE=clickhouse + CLICKHOUSE_DSN）
+  VISTA_DB_TYPE:        ${env.VISTA_DB_TYPE|"duckdb"}
+  DUCKDB_PATH:          ${env.DUCKDB_PATH|"/mnt/vista-cache/factor.duckdb"}
+  VISTA_RESEARCH_PATH:  ${env.VISTA_RESEARCH_PATH|"/mnt/vista-cache/research"}
+  # ClickHouse（仅 VISTA_DB_TYPE=clickhouse 需要；注意 vista 读的是 DSN，不是 URL/USER/PASS）
+  CLICKHOUSE_DSN:       ${env.CLICKHOUSE_DSN|""}
+
+  # LLM（factor-plan / factor-builder 需要）
+  ANTHROPIC_API_KEY:    ${env.ANTHROPIC_API_KEY|""}
+  ANTHROPIC_BASE_URL:   ${env.ANTHROPIC_BASE_URL|""}
+  CLAUDE_MODEL:         ${env.CLAUDE_MODEL|""}
+  AGNO_MODEL:           ${env.AGNO_MODEL|""}
+
+  # czsc 数据 API（factor-detect 真实数据 / strategy-backtest / realtime 需要）
+  CZSC_TOKEN:           ${env.CZSC_TOKEN|""}
+  CZSC_DATA_API:        ${env.CZSC_DATA_API|"https://api.zbczsc.com"}
+
+  # 运行时
+  LOG_FORMAT:           json
+  TZ:                   Asia/Shanghai
 
 common-container: &common-container
   image:   ${vars.imageRegistry}:${vars.imageTag}

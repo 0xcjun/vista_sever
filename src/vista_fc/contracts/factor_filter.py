@@ -27,6 +27,7 @@ class FactorFilterInput(BaseModel):
     creator: str = "factor_evaluate"
     author: str = ""
     outsample_sdt: str = "20250101"
+    research_data_uri: str | None = None  # 可选;生产由 NAS 预置
 
 
 class FactorFilterOutput(BaseModel):

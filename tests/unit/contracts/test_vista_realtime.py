@@ -11,8 +11,7 @@ from vista_fc.contracts.vista_realtime import (
 
 def test_input_defaults() -> None:
     m = VistaRealtimeInput(strategy_toml_uri="oss://b/fts/strat.toml")
-    assert m.update_mode == "auto"
-    assert m.push_targets == ["default"]
+    assert m.strategy_toml_uri == "oss://b/fts/strat.toml"
 
 
 def test_output_carries_summary_and_timing() -> None:

@@ -3,14 +3,16 @@
 # ============================================================================
 # Stage 1: builder — install python deps into /app/.venv using uv
 # ============================================================================
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.12-slim-bookworm AS builder
 
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never \
     PYTHONDONTWRITEBYTECODE=1
 
-RUN apt-get update \
+RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true \
+    && sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
@@ -38,6 +40,9 @@ RUN --mount=type=secret,id=uv_index,target=/run/secrets/uv_index \
 # Now copy actual source and install project
 COPY src/ ./src/
 COPY handlers/ ./handlers/
+# vista 代码运行时读 ".claude/skills/vista-factor-planning" / ".claude/skills/vista-python-factor"
+# 这些文件从 vista 上游源码 (.codex/skills 和 .claude/skills 两份一致) 复制过来,随镜像交付。
+COPY .claude/skills/ ./.claude/skills/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
@@ -45,9 +50,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ============================================================================
 # Stage 2: runtime — minimal image containing python + .venv
 # ============================================================================
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.12-slim-bookworm AS runtime
 
-RUN apt-get update \
+RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true \
+    && sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         libgomp1 \
         ca-certificates \

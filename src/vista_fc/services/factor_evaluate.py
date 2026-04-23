@@ -13,7 +13,7 @@ from vista_fc.contracts.factor_evaluate import (
     FactorEvaluateInput,
     FactorEvaluateOutput,
 )
-from vista_fc.services._support import pull_object, push_object
+from vista_fc.services._support import ensure_research_data, pull_object, push_object
 from vista_fc.storage.workspace import WorkspaceStorage
 
 
@@ -24,6 +24,7 @@ def factor_evaluate_service(
     workspace: WorkspaceStorage,
 ) -> FactorEvaluateOutput:
     db_local, _ = pull_object(workspace, oss_uri=payload.factors_db_uri)
+    ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     if payload.models_config_uri:
         cfg_local, _ = pull_object(workspace, oss_uri=payload.models_config_uri)
@@ -50,10 +51,16 @@ def factor_evaluate_service(
     key = f"user_data/{tenant.user_hash}/research/{tenant.workspace_id}/reports/evaluate_{tenant.run_id}.json"
     uri = f"oss://{workspace.oss.bucket_name}/{key}"
     artifact = push_object(workspace, local_path=report_local, oss_uri=uri, kind="report_json")
+    # 回写 duckdb (evaluate 把评估指标写入 factor_evaluates 表)
+    push_object(workspace, local_path=db_local, oss_uri=payload.factors_db_uri, kind="duckdb")
 
+    problem_stats = dumped.get("problem_stats", []) or []
+    n_success = sum(int(p.get("n_success", 0)) for p in problem_stats)
+    n_failed = sum(int(p.get("n_failed", 0)) for p in problem_stats)
     return FactorEvaluateOutput(
-        total_evaluations=int(dumped.get("total_evaluations", 0)),
-        succeeded=int(dumped.get("succeeded", 0)),
-        failed=int(dumped.get("failed", 0)),
+        total_evaluated=int(dumped.get("total_evaluated", 0)),
+        n_success=n_success,
+        n_failed=n_failed,
+        elapsed_seconds=float(dumped.get("elapsed_seconds", 0.0)),
         report_artifact=artifact,
     )

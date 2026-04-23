@@ -24,6 +24,10 @@ class StrategyBacktestInput(BaseModel):
     n_jobs: int = Field(default=1, ge=1, le=32)
     yearly_days: int = Field(default=252, ge=1, le=366)
     max_workers: int = Field(default=1, ge=1, le=32)
+    # 可选:用 OSS 上的研究数据覆盖容器默认 VISTA_RESEARCH_PATH
+    # (生产由 NAS 挂载提供,本地/一次性按需从 OSS 拉)。
+    # URI 指向单个 duckdb 文件,落盘文件名保留原 basename。
+    research_data_uri: str | None = None
 
 
 class StrategyBacktestOutput(BaseModel):

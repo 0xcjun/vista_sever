@@ -19,6 +19,7 @@ class FactorEvaluateInput(BaseModel):
     problem_codes: list[str] = Field(min_length=1)
     models: list[str] | None = None
     models_config_uri: str | None = None
+    research_data_uri: str | None = None  # 可选;生产由 NAS 预置
     max_workers: int = Field(default=4, ge=1, le=32)
     timeout: int = Field(default=60, ge=1, le=3600)
     fee_rate: float = Field(default=0.0, ge=0.0, le=0.1)
@@ -34,7 +35,9 @@ class FactorEvaluateInput(BaseModel):
 class FactorEvaluateOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    total_evaluations: int = Field(ge=0)
-    succeeded: int = Field(ge=0)
-    failed: int = Field(ge=0)
+    # 字段与 vista.utils.factor_evaluate.FactorEvaluateReport 对齐
+    total_evaluated: int = Field(ge=0, description="总评估数（vista: total_evaluated）")
+    n_success: int = Field(default=0, ge=0, description="所有 problem 的 n_success 合计")
+    n_failed: int = Field(default=0, ge=0, description="所有 problem 的 n_failed 合计")
+    elapsed_seconds: float = Field(default=0.0, ge=0)
     report_artifact: ArtifactRef

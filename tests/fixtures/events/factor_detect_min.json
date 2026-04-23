@@ -9,6 +9,7 @@
   "payload": {
     "factors_db_uri": "oss://vista-fc-dev/user_data/u_local_dev/research/EXP_LOCAL/factors.duckdb",
     "max_workers": 2,
-    "timeout": 30
+    "timeout": 30,
+    "research_data_uri": "oss://vista-fc-dev/research_data/future_kline.duckdb"
   }
 }

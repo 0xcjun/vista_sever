@@ -1,0 +1,57 @@
+{
+  "tenant": {
+    "user_hash": "u_local_dev",
+    "workspace_id": "FLOW_FULL",
+    "workspace_kind": "research",
+    "run_id": "flow-full-0001",
+    "requested_at": "2026-04-23T21:00:00Z"
+  },
+
+  "user_input": "动量反转因子挖掘",
+  "plan_model": null,
+  "skill_path": null,
+  "interactive": false,
+
+  "build_model": null,
+  "builder_type": "agno_team",
+  "factor_numbers": 4,
+  "batch_size": 4,
+  "build_workers": 1,
+  "multi_turn": false,
+  "build_max_retries": 2,
+
+  "detect_workers": 1,
+  "detect_timeout": 60,
+
+  "dup_workers": 1,
+  "dup_threshold": 0.8,
+  "dup_timeout": 120,
+
+  "eval_workers": 1,
+  "eval_timeout": 180,
+  "eval_models": ["DirectExposure"],
+  "fee_rate": 0.0,
+
+  "problem_codes": ["FTS_A504A636"],
+  "evaluate_methods": [],
+  "filter_methods": [],
+  "positive_extractor": "ratio_across_problems",
+  "positive_metric": "绝对收益",
+  "positive_threshold": 0.0,
+  "top_n": 10,
+  "author": "vista-fc-flow-e2e",
+  "outsample_sdt": "20250101",
+
+  "mode": "research",
+  "data_mode": "total",
+  "backtest_concurrency": 4,
+  "backtest_workers": 1,
+  "wbt": {
+    "fee_rate": 0.0,
+    "digits": 2,
+    "n_jobs": 1,
+    "yearly_days": 252
+  },
+
+  "research_data_uri": "oss://vista-fc-dev/research_data/future_kline.duckdb"
+}

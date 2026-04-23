@@ -16,6 +16,9 @@ class FactorDetectInput(BaseModel):
 
     factors_db_uri: str
     problems_map_uri: str | None = None
+    # 可选:OSS 上的 future_kline.duckdb,按需拉到容器 VISTA_RESEARCH_PATH。
+    # 生产由 NAS 预置;本地/一次性请求传 URI。
+    research_data_uri: str | None = None
     max_workers: int = Field(default=4, ge=1, le=32)
     timeout: int = Field(default=60, ge=1, le=3600)
 

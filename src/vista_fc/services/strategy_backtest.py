@@ -13,7 +13,7 @@ from vista_fc.contracts.strategy_backtest import (
     StrategyBacktestInput,
     StrategyBacktestOutput,
 )
-from vista_fc.services._support import pull_object, push_object
+from vista_fc.services._support import ensure_research_data, pull_object, push_object
 from vista_fc.storage.workspace import ArtifactKind, WorkspaceStorage
 
 
@@ -34,6 +34,7 @@ def strategy_backtest_service(
     workspace: WorkspaceStorage,
 ) -> StrategyBacktestOutput:
     toml_local, _ = pull_object(workspace, oss_uri=payload.strategy_toml_uri)
+    ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     out_root = workspace.tmp_root / f"backtest_{tenant.run_id}"
     out_root.mkdir(parents=True, exist_ok=True)

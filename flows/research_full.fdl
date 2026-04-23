@@ -2,33 +2,14 @@ version: v1
 type: flow
 name: research-full
 
-# Composite flow: research-pipeline → backtest-fanout on its toml outputs.
-# Input: research-pipeline input + { wbt: {...}, mode: "research", data_mode: "total", backtest_workers: 1 }
+# research-pipeline 的 alias:plan → builder → detect → duplicate → evaluate → filter → backtest。
+# 旧版本把 backtest 拆在 backtest-fanout 子流;当前版本 backtest 已整合进 research-pipeline。
+# 本文件只保留给历史调用方兼容,内部完全委托给 research-pipeline。
 
 steps:
   - type: flow
     name: run_pipeline
     flowName: research-pipeline${env.FC_SUFFIX|""}
-    outputMappings:
-      - target: $.pipeline_out
-        source: $
-
-  - type: flow
-    name: run_backtest
-    flowName: backtest-fanout${env.FC_SUFFIX|""}
-    inputMappings:
-      - target: tenant
-        source: $.pipeline_out.tenant
-      - target: strategy_tomls
-        source: $.pipeline_out.strategy_tomls
-      - target: mode
-        source: $.mode
-      - target: data_mode
-        source: $.data_mode
-      - target: backtest_workers
-        source: $.backtest_workers
-      - target: wbt
-        source: $.wbt
 
   - type: succeed
     name: done

@@ -10,6 +10,16 @@
         'title': 'Batch Size',
         'type': 'integer',
       }),
+      'builder_type': dict({
+        'default': 'claude',
+        'enum': list([
+          'claude',
+          'agno_agent',
+          'agno_team',
+        ]),
+        'title': 'Builder Type',
+        'type': 'string',
+      }),
       'factor_numbers': dict({
         'default': 20,
         'maximum': 10000,
@@ -160,6 +170,13 @@
         'title': 'Per Route',
         'type': 'array',
       }),
+      'route_codes': dict({
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Route Codes',
+        'type': 'array',
+      }),
       'total_factors': dict({
         'minimum': 0,
         'title': 'Total Factors',
@@ -201,6 +218,18 @@
         ]),
         'default': None,
         'title': 'Problems Map Uri',
+      }),
+      'research_data_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Research Data Uri',
       }),
       'timeout': dict({
         'default': 60,
@@ -334,6 +363,18 @@
         'title': 'Problem Codes',
         'type': 'array',
       }),
+      'research_data_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Research Data Uri',
+      }),
       'route_codes': dict({
         'items': dict({
           'type': 'string',
@@ -419,29 +460,38 @@
     }),
     'additionalProperties': False,
     'properties': dict({
-      'dropped': dict({
+      'elapsed_seconds': dict({
+        'default': 0.0,
         'minimum': 0,
-        'title': 'Dropped',
-        'type': 'integer',
-      }),
-      'kept': dict({
-        'minimum': 0,
-        'title': 'Kept',
-        'type': 'integer',
+        'title': 'Elapsed Seconds',
+        'type': 'number',
       }),
       'report_artifact': dict({
         '$ref': '#/$defs/ArtifactRef',
       }),
-      'total_checked': dict({
+      'total_input': dict({
+        'default': 0,
+        'description': '所有 problem 输入因子数合计',
         'minimum': 0,
-        'title': 'Total Checked',
+        'title': 'Total Input',
+        'type': 'integer',
+      }),
+      'total_rejected': dict({
+        'default': 0,
+        'description': '被软删除的因子数（vista: total_rejected）',
+        'minimum': 0,
+        'title': 'Total Rejected',
+        'type': 'integer',
+      }),
+      'total_survived': dict({
+        'default': 0,
+        'description': '保留下来的因子数',
+        'minimum': 0,
+        'title': 'Total Survived',
         'type': 'integer',
       }),
     }),
     'required': list([
-      'total_checked',
-      'dropped',
-      'kept',
       'report_artifact',
     ]),
     'title': 'FactorDuplicateOutput',
@@ -504,6 +554,18 @@
         'minItems': 1,
         'title': 'Problem Codes',
         'type': 'array',
+      }),
+      'research_data_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Research Data Uri',
       }),
       'retry_failed': dict({
         'default': False,
@@ -588,29 +650,38 @@
     }),
     'additionalProperties': False,
     'properties': dict({
-      'failed': dict({
+      'elapsed_seconds': dict({
+        'default': 0.0,
         'minimum': 0,
-        'title': 'Failed',
+        'title': 'Elapsed Seconds',
+        'type': 'number',
+      }),
+      'n_failed': dict({
+        'default': 0,
+        'description': '所有 problem 的 n_failed 合计',
+        'minimum': 0,
+        'title': 'N Failed',
+        'type': 'integer',
+      }),
+      'n_success': dict({
+        'default': 0,
+        'description': '所有 problem 的 n_success 合计',
+        'minimum': 0,
+        'title': 'N Success',
         'type': 'integer',
       }),
       'report_artifact': dict({
         '$ref': '#/$defs/ArtifactRef',
       }),
-      'succeeded': dict({
+      'total_evaluated': dict({
+        'description': '总评估数（vista: total_evaluated）',
         'minimum': 0,
-        'title': 'Succeeded',
-        'type': 'integer',
-      }),
-      'total_evaluations': dict({
-        'minimum': 0,
-        'title': 'Total Evaluations',
+        'title': 'Total Evaluated',
         'type': 'integer',
       }),
     }),
     'required': list([
-      'total_evaluations',
-      'succeeded',
-      'failed',
+      'total_evaluated',
       'report_artifact',
     ]),
     'title': 'FactorEvaluateOutput',
@@ -699,6 +770,18 @@
         }),
         'title': 'Problem Codes',
         'type': 'array',
+      }),
+      'research_data_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Research Data Uri',
       }),
       'route_codes': dict({
         'items': dict({
@@ -994,6 +1077,18 @@
         'title': 'N Jobs',
         'type': 'integer',
       }),
+      'research_data_uri': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'title': 'Research Data Uri',
+      }),
       'strategy_toml_uri': dict({
         'title': 'Strategy Toml Uri',
         'type': 'string',
@@ -1097,25 +1192,8 @@
   dict({
     'additionalProperties': False,
     'properties': dict({
-      'push_targets': dict({
-        'items': dict({
-          'type': 'string',
-        }),
-        'title': 'Push Targets',
-        'type': 'array',
-      }),
       'strategy_toml_uri': dict({
         'title': 'Strategy Toml Uri',
-        'type': 'string',
-      }),
-      'update_mode': dict({
-        'default': 'auto',
-        'enum': list([
-          'auto',
-          'full',
-          'incremental',
-        ]),
-        'title': 'Update Mode',
         'type': 'string',
       }),
     }),

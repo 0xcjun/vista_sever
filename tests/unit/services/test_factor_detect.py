@@ -70,10 +70,13 @@ def test_detect_happy_path(
     assert kwargs["max_workers"] == 2
     assert kwargs["timeout"] == 30
 
-    # push_from_tmp called with the correct oss_key pattern
-    push_call = workspace_mock.push_from_tmp.call_args
-    assert push_call.kwargs["kind"] == "report_json"
-    assert "reports/detect_" in push_call.kwargs["oss_key"]
+    # push_from_tmp called twice: once for report.json, once to write back updated duckdb
+    push_kinds = [c.kwargs["kind"] for c in workspace_mock.push_from_tmp.call_args_list]
+    push_keys = [c.kwargs["oss_key"] for c in workspace_mock.push_from_tmp.call_args_list]
+    assert "report_json" in push_kinds
+    assert "duckdb" in push_kinds
+    assert any("reports/detect_" in k for k in push_keys)
+    assert any(k.endswith("factors.duckdb") for k in push_keys)
 
 
 def test_detect_raises_on_vista_failure(

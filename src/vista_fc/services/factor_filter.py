@@ -13,7 +13,7 @@ from vista.utils.factor_filter import factor_filter as _vista_factor_filter
 
 from vista_fc.contracts.common import TenantContext
 from vista_fc.contracts.factor_filter import FactorFilterInput, FactorFilterOutput
-from vista_fc.services._support import pull_object, push_object
+from vista_fc.services._support import ensure_research_data, pull_object, push_object
 from vista_fc.storage.workspace import WorkspaceStorage
 
 
@@ -24,6 +24,7 @@ def factor_filter_service(
     workspace: WorkspaceStorage,
 ) -> FactorFilterOutput:
     db_local, _ = pull_object(workspace, oss_uri=payload.factors_db_uri)
+    ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     out_dir = workspace.tmp_root / f"filter_{tenant.run_id}"
     out_dir.mkdir(parents=True, exist_ok=True)
