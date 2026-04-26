@@ -240,6 +240,8 @@ resources:
           <<: *common-container
           args: ["handlers.deadletter:handler"]
 
+  # 无触发器，调用方走 fc3 InvokeFunction SDK / 函数 URL 直调。
+  # 想要 cron @every 1m 自动 tick，单独 deploy s.realtime-cron.yaml（独立函数 vista-realtime-cron）。
   vista-realtime:
     component: fc3
     props:
@@ -260,14 +262,6 @@ resources:
         customContainerConfig:
           <<: *common-container
           args: ["handlers.vista_realtime:handler"]
-      triggers:
-        - name: realtime-tick
-          type: timer
-          config:
-            cronExpression: "@every 1m"
-            enable: ${env.REALTIME_TRIGGER_ENABLE|false}
-            payload: |
-              {"tenant":{"user_hash":"<hash>","workspace_id":"FTS_XXX","workspace_kind":"realtime","run_id":"auto","requested_at":"1970-01-01T00:00:00Z"},"payload":{"strategy_toml_uri":"oss://vista-fc-dev/user_data/<hash>/realtime/FTS_XXX/strategy.toml","update_mode":"auto","push_targets":["default"]}}
 
   research-pipeline-flow:
     component: fnf

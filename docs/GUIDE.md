@@ -109,7 +109,31 @@ scripts/docker_run.sh factor_detect tests/fixtures/events/factor_detect_min.json
 
 ### 2.2 调单函数
 
-最常用是阿里云 SDK 直调（不需要任何额外 trigger）：
+#### 一把跑通：`scripts/invoke_all.{sh,py}`
+
+仓库带了两份等价的教程脚本，部署后跑一遍可以验证全部 9 个函数 + FnF flow，也是最直接的客户端代码模板。
+
+**Bash 版**（包 `s cli`，最少配置）：
+
+```bash
+FC_ACCESS=prod bash scripts/invoke_all.sh help     # 看命令清单
+FC_ACCESS=prod bash scripts/invoke_all.sh plan     # 单步：调 factor-plan
+FC_ACCESS=prod bash scripts/invoke_all.sh fnf      # ★ 推荐：启 FnF flow 端到端跑 7 步
+FC_ACCESS=prod bash scripts/invoke_all.sh chain    # 按顺序串调每个函数（仅演示）
+```
+
+**Python 版**（直接走 alibabacloud SDK，跑通后可直接抠到你的 BFF / 客户端服务里用）：
+
+```bash
+ALIYUN_AK=... ALIYUN_SK=... ./scripts/invoke_all.py fnf       # 自动 uv inline-deps 装 SDK
+ALIYUN_AK=... ALIYUN_SK=... ./scripts/invoke_all.py plan
+```
+
+两个脚本共用同样的 step 名 + 同样的环境变量（`USER_HASH` / `WORKSPACE_ID` / `RUN_ID` / `OSS_BUCKET` / `FC_SUFFIX`），结构对照写。每个 step 函数都展示一个最小 envelope，复制改改就能用。
+
+#### 真到客户端代码里：阿里云 SDK 直调
+
+不需要任何额外 trigger：
 
 ```python
 from alibabacloud_fc20230330.client import Client
@@ -293,13 +317,36 @@ GIT_SHA=<old_sha> s deploy --access prod --assume-yes
 
 ### 3.4 实盘函数（vista-realtime）
 
-`vista-realtime` 默认 cron 关着（`REALTIME_TRIGGER_ENABLE=false`），上线后单独打开：
+实盘有两份 yaml，**独立部署、独立决定要不要开**：
+
+| Yaml | 函数名 | 触发 | 用途 |
+|---|---|---|---|
+| `s.yaml` 里的 `vista-realtime` | `vista-realtime${suffix}` | 无（SDK / 函数 URL 直调） | 跟其它函数一起 `s deploy` 进来；外部交易系统 push tick 时调用 |
+| `s.realtime-cron.yaml` 里的 `vista-realtime-cron` | `vista-realtime-cron${suffix}` | `@every 1m` cron | 自动 tick；想用就单独 `s deploy -t s.realtime-cron.yaml` |
+
+两个函数共用 `handlers.vista_realtime:handler`，只差触发方式。可以同时部署、单独留一个、或都不要。
 
 ```bash
-REALTIME_TRIGGER_ENABLE=true s deploy vista-realtime --access prod --assume-yes
+# 想要 cron 自动 tick：
+s deploy -t s.realtime-cron.yaml --access prod --assume-yes
+
+# 不想了：
+s remove -t s.realtime-cron.yaml --access prod --assume-yes
+
+# 临时关掉 cron 但保留函数（方便排错）：
+REALTIME_CRON_ENABLE=false s deploy -t s.realtime-cron.yaml --access prod --assume-yes
 ```
 
-cron `@every 1m` 的连续触发让实例自然撑温，**不需要预留实例**。如果之后改成 HTTP / SDK 不规律触发要 sub-second 响应，给 vista-realtime 资源追加 `provisionConfig`（target=1, alwaysAllocateCPU=true），约 200-300 元/月（cn-hangzhou 1vCPU+4GB 24×7）；只要交易时段开的话用 `scheduledActions` 定时上下线砍到 ~1/4。
+如果 SDK-invoke 路径要 sub-second 响应、且 cron 撑温没用上：给 `s.yaml` 里 `vista-realtime` 资源的 `props` 下追加 `provisionConfig`：
+
+```yaml
+provisionConfig:
+  qualifier: LATEST
+  target: 1
+  alwaysAllocateCPU: true
+```
+
+约 200-300 元/月（cn-hangzhou 1vCPU+4GB 24×7）；只要交易时段开的话加 `scheduledActions` 定时上下线砍到 ~1/4。
 
 ### 3.5 监控
 

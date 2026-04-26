@@ -1,0 +1,96 @@
+edition: 3.0.0
+name: vista-fc-realtime-cron
+
+# 实盘 cron 变体 — 独立部署，自己决定要不要开。函数名 vista-realtime-cron${suffix}，
+# 与 s.yaml 里 SDK-invocable 的 vista-realtime 不冲突，可以同时部署。
+#
+# 启用：     s deploy -t s.realtime-cron.yaml --access prod --assume-yes
+# 关掉：     s remove -t s.realtime-cron.yaml --access prod --assume-yes
+# 暂停 cron：REALTIME_CRON_ENABLE=false s deploy -t s.realtime-cron.yaml --access prod --assume-yes
+#
+# Anchor 与 s.yaml 一致；改一处记得同步另一处（或者手工保持注意）。
+
+access: ${env.FC_ACCESS|default}
+
+vars:
+  region:           ${env.FC_REGION|cn-hangzhou}
+  accountId:        ${env.ALIYUN_ACCOUNT_ID}
+  ossBucket:        ${env.OSS_BUCKET|vista-fc-dev}
+  imageRegistry:    registry.${vars.region}.aliyuncs.com/vista/vista-fc-base
+  imageTag:         ${env.GIT_SHA|latest}
+  nasMountTarget:   ${env.NAS_MOUNT_TARGET}
+  vpcId:            ${env.VPC_ID}
+  vswitchId:        ${env.VSWITCH_ID}
+  securityGroupId:  ${env.SG_ID}
+  logProject:       ${env.LOG_PROJECT|vista-fc}
+  logStore:         ${env.LOG_STORE|handlers}
+  roleArn:          acs:ram::${vars.accountId}:role/fc-vista-role
+  functionSuffix:   ${env.FC_SUFFIX|""}
+
+common-vpc: &common-vpc
+  vpcId: ${vars.vpcId}
+  vswitchIds:
+    - ${vars.vswitchId}
+  securityGroupId: ${vars.securityGroupId}
+
+common-nas: &common-nas
+  userId: 10003
+  groupId: 10003
+  mountPoints:
+    - serverAddr: ${vars.nasMountTarget}
+      mountDir:   /mnt/vista-cache
+
+common-log: &common-log
+  project:  ${vars.logProject}
+  logstore: ${vars.logStore}
+  enableRequestMetrics: true
+
+common-env: &common-env
+  OSS_REGION:           ${vars.region}
+  OSS_BUCKET:           ${vars.ossBucket}
+  NAS_CACHE_ROOT:       /mnt/vista-cache
+  VISTA_DB_TYPE:        ${env.VISTA_DB_TYPE|"duckdb"}
+  DUCKDB_PATH:          ${env.DUCKDB_PATH|"/mnt/vista-cache/factor.duckdb"}
+  VISTA_RESEARCH_PATH:  ${env.VISTA_RESEARCH_PATH|"/mnt/vista-cache/research"}
+  CLICKHOUSE_DSN:       ${env.CLICKHOUSE_DSN|""}
+  CZSC_TOKEN:           ${env.CZSC_TOKEN|""}
+  CZSC_DATA_API:        ${env.CZSC_DATA_API|"https://api.zbczsc.com"}
+  LOG_FORMAT:           json
+  TZ:                   Asia/Shanghai
+
+common-container: &common-container
+  image:   ${vars.imageRegistry}:${vars.imageTag}
+  command: ["python", "-m", "vista_fc.runtime.adapter"]
+  port:    9000
+
+resources:
+  vista-realtime-cron:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: vista-realtime-cron${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 360
+        memorySize: 4096
+        cpu: 1
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.vista_realtime:handler"]
+      triggers:
+        - name: realtime-tick
+          type: timer
+          config:
+            cronExpression: "@every 1m"
+            enable: ${env.REALTIME_CRON_ENABLE|true}
+            # payload 是占位 — 真正的 user_hash / workspace_id 由 vista-realtime 启动时
+            # 从 OSS 列出的策略清单决定（见 handlers/vista_realtime.py）。
+            payload: |
+              {"tenant":{"user_hash":"<hash>","workspace_id":"FTS_XXX","workspace_kind":"realtime","run_id":"auto","requested_at":"1970-01-01T00:00:00Z"},"payload":{"strategy_toml_uri":"oss://vista-fc-dev/user_data/<hash>/realtime/FTS_XXX/strategy.toml","update_mode":"auto","push_targets":["default"]}}
