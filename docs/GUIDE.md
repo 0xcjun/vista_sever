@@ -107,9 +107,9 @@ docker compose -f dev/compose.yaml down
 - **"本地"**：本地开发用 MinIO 时必填；线上 Aliyun OSS 留空。
 - **"真数据"**：fixture/mock 数据分支不触发 `vista.data.xy|strategy`；但只要函数真调到这俩模块，未设 token 会在 import 时 `assert` 挂进程（严重故障）。
 - **`CLICKHOUSE_URL/USER/PASS`**（注意不是 vista 能读的名字）：仅 `tests/deploy_preflight/08_ch_probe.sh` 用来 curl 健康检查，**不会被 FC 容器内代码消费**。vista 实际读 `CLICKHOUSE_DSN`（或 `CLICKHOUSE_HOST/PORT/DATABASE/USERNAME/PASSWORD`，注意命名差异）。
-- **默认模式**：`VISTA_DB_TYPE=duckdb`，`DUCKDB_PATH=/mnt/vista-cache/factor.duckdb`（由各 `s.*.yaml` 的 `common-env` 默认值兜底）；要走 ClickHouse 必须显式 `VISTA_DB_TYPE=clickhouse` + 填 `CLICKHOUSE_DSN`。
+- **默认模式**：`VISTA_DB_TYPE=duckdb`，`DUCKDB_PATH=/mnt/vista-cache/factor.duckdb`（由 `s.yaml` 默认值兜底）；要走 ClickHouse 必须显式 `VISTA_DB_TYPE=clickhouse` + 填 `CLICKHOUSE_DSN`。
 
-完整默认值看 `.env.example` 和任一 `s.*.yaml` 里的 `common-env` 块（11 份 yaml 之间该块保持同步）。
+完整默认值看 `.env.example` 和 `s.yaml` 的 `common-env` 块。
 
 ### 1.4 修改/新增函数
 
@@ -131,7 +131,7 @@ uv run pytest tests/unit/contracts/test_schema_snapshot.py --snapshot-update
 1. `src/vista_fc/contracts/<name>.py` — 定义 `XxxInput` / `XxxOutput`
 2. `src/vista_fc/services/<name>.py` — 业务代码，接 `XxxInput` 返 `XxxOutput`
 3. `handlers/<name>.py` — 拷贝 `handlers/factor_detect.py` 改 import 和 service 即可
-4. `s.<name>.yaml` — 新建一份独立部署 yaml（拷 `s.factor-plan.yaml` 改名），然后把 `<name>` 加到 `scripts/deploy_all.sh` 的 `YAMLS` 列表
+4. `s.yaml` — 加一个 `fc3` 资源块（复制 `factor-plan` 改名）
 5. `tests/unit/handlers/test_<name>.py` — 照着现有 handler 单测写
 
 ---
@@ -288,11 +288,10 @@ print(json.dumps(FactorEvaluateInput.model_json_schema(), indent=2, ensure_ascii
 本地 uv sync          阿里云 ACR                 阿里云 FC 3.0
      │                   ▲                         ▲
      ▼                   │                         │
-  pytest             build_image → push      scripts/deploy_all.sh
+  pytest             build_image → push         s deploy
                                                    │
                                                    ▼
                                       8 FC 函数 + 3 FnF 流上线
-                                      （+ realtime cron / event 按需另开）
 ```
 
 ### 4.1 阿里云资源先决条件
@@ -351,18 +350,15 @@ export GIT_SHA=$(git rev-parse --short HEAD)
 
 ```bash
 # 静态校验
+s verify
 uv run python scripts/validate_flow.py
 
-# 全量部署（11 个 s.*.yaml 顺序起一次）
-FC_ACCESS=dev bash scripts/deploy_all.sh
+# 全量部署
+s deploy --access dev --assume-yes
 
-# 单函数部署（迭代时更快 — 这就是把 yaml 拆开的初衷）
-s deploy -t s.factor-detect.yaml --access dev --assume-yes
-s deploy -t s.flows.yaml --access dev --assume-yes
-
-# 实盘单独部署（cron / event 二选一或同时开）
-s deploy -t s.realtime-cron.yaml  --access dev --assume-yes
-s deploy -t s.realtime-event.yaml --access dev --assume-yes
+# 单资源部署（迭代时更快）
+s deploy factor-detect --access dev
+s deploy research-pipeline-flow --access dev
 ```
 
 ### 4.6 preflight 隔离验证（部署到 dev 前推荐）
@@ -389,10 +385,7 @@ FC_SMOKE_READY=1 uv run pytest tests/smoke --access dev
 
 ```bash
 git log --oneline | head -5
-# 全栈回退
-GIT_SHA=<old_sha> FC_ACCESS=prod bash scripts/deploy_all.sh
-# 或单函数回退（粒度更细，受影响面更小）
-GIT_SHA=<old_sha> s deploy -t s.factor-detect.yaml --access prod --assume-yes
+GIT_SHA=<old_sha> s deploy --access prod --assume-yes
 ```
 
 ---
@@ -415,7 +408,7 @@ GIT_SHA=<old_sha> s deploy -t s.factor-detect.yaml --access prod --assume-yes
 
 ### 5.1 方案 A：FC 3.0 HTTP 触发器（单函数调用）
 
-每个函数加一个 HTTP 触发器，FC 生成 `https://<account>.<region>.fcapp.run/<fn>` 形态的 URL。在对应 `s.<fn>.yaml` 的资源下加：
+每个函数加一个 HTTP 触发器，FC 生成 `https://<account>.<region>.fcapp.run/<fn>` 形态的 URL。`s.yaml` 在对应资源下加：
 
 ```yaml
 factor-detect:
@@ -647,24 +640,12 @@ vista_sever/
 │   ├── push_image.sh        ACR login + push
 │   ├── local_invoke.sh      s local invoke 包装
 │   ├── docker_run.sh        直接 docker run（不走 s CLI）
-│   ├── deploy_all.sh        按顺序 deploy 全部 11 个 s.*.yaml
 │   └── validate_flow.py     FDL 静态校验器
 ├── docs/
 │   ├── GUIDE.md             本文件
-│   ├── PLAYBOOK.md          运维操作手册
-│   ├── RUNBOOK.md           告警处置 + 故障排除
+│   ├── RUNBOOK.md           运维 playbook + 故障排除
 │   └── superpowers/         设计文档
-├── s.factor-plan.yaml       ┐
-├── s.factor-builder.yaml    │
-├── s.factor-detect.yaml     │ 8 个 fc3 函数，每个一份独立 yaml
-├── s.factor-duplicate.yaml  │ 任一改动只需重 deploy 对应 yaml
-├── s.factor-evaluate.yaml   │
-├── s.factor-filter.yaml     │
-├── s.strategy-backtest.yaml │
-├── s.deadletter.yaml        ┘
-├── s.flows.yaml             3 个 FnF flow（编排 fc3 函数）
-├── s.realtime-cron.yaml     vista-realtime-cron @every 1m，无预留
-├── s.realtime-event.yaml    vista-realtime-event SDK 直调，带预留
+├── s.yaml                   serverless-devs 主清单（8 函数 + 3 flow）
 ├── Dockerfile               多阶段构建（python:3.12-slim + linux/amd64）
 ├── pyproject.toml           依赖 + 工具配置
 └── .env.example             本地环境变量模板
