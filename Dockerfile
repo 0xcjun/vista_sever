@@ -47,6 +47,20 @@ COPY .claude/skills/ ./.claude/skills/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Image-slimming attempts (kept here as a "do not retry" note):
+#   - Removing __pycache__/*.pyc saves ~150MB but *adds* ~1s to cold start
+#     because CPython has to recompile every imported .py on first hit.
+#     UV_COMPILE_BYTECODE=1 above intentionally pre-builds them.
+#   - Removing in-package tests/docs/examples/benchmarks dirs only saves
+#     ~8MB safely — most are real Python sub-packages (numpy.tests,
+#     pandas.tests, botocore.docs is imported by boto3 to generate service
+#     docstrings, numpy.testing / pandas.testing are public runtime APIs).
+#     Deleting without an __init__.py guard breaks the runtime.
+#   - `strip --strip-unneeded` on *.so / *.so.* breaks numpy's bundled
+#     libscipy_openblas (ELF page-alignment errors on dlopen).
+# Real cold-start wins live elsewhere: ACR image acceleration and FC
+# provisioned concurrency for latency-sensitive functions.
+
 # ============================================================================
 # Stage 2: runtime — minimal image containing python + .venv
 # ============================================================================
