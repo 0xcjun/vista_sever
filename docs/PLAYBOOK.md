@@ -149,48 +149,69 @@ uv run pytest tests/perf --benchmark-compare=main --benchmark-compare-fail=mean:
 
 ---
 
-## 6. 实盘热备模式（Provisioned Realtime）
+## 6. 实盘部署 — cron 与 event 两条路径
 
-vista-realtime 默认走 FC 标准冷启（节点未缓存镜像时 5-15s）。如果实盘信号路径要 sub-second 响应，启用预留实例：始终保留 N 个暖容器，下次调用 ~0s 启动。
+vista-realtime 拆成**两个独立函数 + 各自的 yaml**，与研究全栈（`s.yaml`）也完全分开。三套部署互不干涉，可以任意组合启用。
 
-### 何时启用
+| Yaml | 函数名 | 触发 | 预留 | 用途 |
+|---|---|---|---|---|
+| `s.yaml` | factor-* / strategy-backtest / deadletter / fnf flows | — | — | 研究全栈（plan→builder→detect→...→backtest） |
+| `s.realtime-cron.yaml` | `vista-realtime-cron${suffix}` | `@every 1m` 定时 | ❌ | 自动 tick；cron 连续触发让实例自然撑温 |
+| `s.realtime-event.yaml` | `vista-realtime-event${suffix}` | 无（SDK / 函数 URL 直调） | ✅ 1 实例 | 外部事件推送，要 sub-second 响应 |
 
-- ✅ vista-realtime 由**HTTP / SDK 不规律触发**（外部消息推过来要立即响应）
-- ✅ 实盘要求每个 tick 在 1s 内完成
-- ❌ 仅 cron `@every 1m` 触发：连续触发本身让实例几乎不会冷下来，预留是浪费钱
-- ❌ 研究 / 回测：FnF 整条 160s+，5-15s 冷启动是噪声
+两个 realtime 函数共用同一个 `handlers.vista_realtime:handler` 镜像，**只差在触发方式和预留**。
 
-### 切换
-
-`s.realtime-warm.yaml` 与 `s.yaml` 的 `vista-realtime` **同名同 functionName**，部署其中一个会**覆盖**另一个的函数配置。同 access 不要同时部署。
+### 部署 / 切换
 
 ```bash
-# A. 启用热备 — 单独部署 vista-realtime + provisionConfig
-s deploy -t s.realtime-warm.yaml
+# 研究全栈
+s deploy
 
-# B. 关闭热备 — 移除预留 + 函数，回到 s.yaml 的标准部署
-s remove -t s.realtime-warm.yaml
-s deploy                                # 重新部署 s.yaml 全栈
+# 定时实盘信号
+s deploy -t s.realtime-cron.yaml
 
-# C. 临时调整暖实例数（不重新部署）
-REALTIME_PROVISION_TARGET=2 s deploy -t s.realtime-warm.yaml
+# 事件实盘信号（带预留）
+s deploy -t s.realtime-event.yaml
 
-# D. 临时关掉 cron，纯 HTTP/SDK 触发
-REALTIME_TRIGGER_ENABLE=false s deploy -t s.realtime-warm.yaml
+# 关掉某一路（移除函数 + 触发器 + 预留）
+s remove -t s.realtime-cron.yaml
+s remove -t s.realtime-event.yaml
 ```
 
-### 调参
+三个 yaml 函数名不同，**可以同时全部部署**。如果你只跑实盘不要研究，跳过 `s deploy` 即可。
 
-| 环境变量 | 默认 | 含义 |
-|---|---|---|
-| `REALTIME_PROVISION_TARGET` | 1 | 始终保留的暖实例数；2 加冗余；0 等同关闭预留 |
-| `REALTIME_TRIGGER_ENABLE`   | true | 是否打开 `@every 1m` cron tick |
+### 选哪种 realtime？
+
+- **cron 模式**（推荐起步）：FC 节点被 1 分钟一次的 cron 持续召唤，实例几乎不冷下来，**不需要预留**省 200-300 元/月。
+- **event 模式**：外部交易系统不规律 push tick / signal 进来，单次冷启 5-15s 不能忍，**必须开预留**。
+- **同时开**：cron 拉数据更新策略库（写 OSS），event 接外部 tick 出信号（读 OSS），两路互不干涉。
+
+### 关键参数
+
+| 环境变量 | 适用 | 默认 | 含义 |
+|---|---|---|---|
+| `REALTIME_CRON_ENABLE` | cron | `true` | 关掉则只是把函数部署上去但 cron 不实际触发，方便排错 |
+| `REALTIME_PROVISION_TARGET` | event | `1` | 暖实例数；`2` 加冗余；`0` 等同关闭预留 |
+| `FC_SUFFIX` | 全部 | `""` | 函数名后缀，用于多环境隔离（如 `-prod` / `-canary`） |
+
+### 调用 event 函数
+
+无 trigger，外部系统通过 fc3 SDK / Aliyun OpenAPI InvokeFunction 调用：
+
+```bash
+s cli fc invoke-function \
+  --function-name vista-realtime-event \
+  --event '{"tenant":{...},"payload":{...}}' \
+  --access ${env.FC_ACCESS}
+```
+
+或 Python 侧用 `aliyun-python-sdk-fc-open` / `alibabacloud_fc20230330` 调 `InvokeFunction`。要走函数 URL 的话，先 `s cli fc create-trigger` 加一个 http trigger。
 
 ### 成本
 
-预留实例按"实例预留时长 + vCPU + 内存"24×7 计费。vista-realtime 当前 1 vCPU + 4 GB；按 cn-hangzhou 公开价格（2026 上半年）大致 **每个暖实例 ~200-300 元/月**（具体看 [Aliyun FC 计价器](https://www.aliyun.com/price/product#/fc/detail/fc)）。
+vista-realtime-event 当前 1 vCPU + 4 GB，预留 1 实例按 cn-hangzhou 公开价（2026 上半年）大约 **200-300 元/月** 24×7（具体见 [Aliyun FC 计价](https://www.aliyun.com/price/product#/fc/detail/fc)）。
 
-只在 A 股 09:00-15:00 需要的话，去 fc3 component 文档 加 `scheduledActions`：到点上线、收市下线，月成本砍到 ~1/4。
+只在 A 股 09:00-15:00 需要的话，给 `provisionConfig` 加 `scheduledActions`：到点 target=1，收市 target=0。月成本压到 ~1/4。配置示例见 fc3 component 文档。
 
 ---
 

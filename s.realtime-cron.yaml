@@ -1,17 +1,11 @@
 edition: 3.0.0
-name: vista-fc-realtime
+name: vista-fc-realtime-cron
 
-# 实盘热备部署：只部署 vista-realtime 单函数 + 预留实例（始终保留 N 个暖容器）。
-# 用法见 docs/PLAYBOOK.md §5；切换示例：
-#   启用热备： s deploy  -t s.realtime-warm.yaml
-#   关闭热备： s remove  -t s.realtime-warm.yaml
-#             s deploy  -t s.yaml          # 回到无预留的标准部署
+# 实盘信号 — cron 定时变体。@every 1m 自动 tick；连续触发让 FC 实例几乎不冷下来，
+# 所以**不开预留**省钱。需要事件触发的 sub-second 路径见 s.realtime-event.yaml。
 #
-# 注意：s.yaml 里的 vista-realtime 和这里的 functionName 一样，部署其中一个会
-# 覆盖另一个的函数配置；所以**不要同时**对同一个 access 既 deploy s.yaml 又
-# deploy s.realtime-warm.yaml — 选一种模式。
-#
-# 与 s.yaml 的 anchor 块保持一致；改动 s.yaml 时记得对应同步这里。
+# 与 s.yaml / s.realtime-event.yaml 完全独立，函数名 vista-realtime-cron${suffix}，
+# 三套可同时部署、互不干涉。
 
 access: ${env.FC_ACCESS|default}
 
@@ -30,6 +24,7 @@ vars:
   roleArn:          acs:ram::${vars.accountId}:role/fc-vista-role
   functionSuffix:   ${env.FC_SUFFIX|""}
 
+# Anchor 与 s.yaml / s.realtime-event.yaml 一致；改一处记得同步另两处。
 common-vpc: &common-vpc
   vpcId: ${vars.vpcId}
   vswitchIds:
@@ -48,7 +43,7 @@ common-log: &common-log
   logstore: ${vars.logStore}
   enableRequestMetrics: true
 
-# vista-realtime 不用 LLM，所以这里的 common-env 不带 ANTHROPIC/CLAUDE/AGNO 几个 key。
+# realtime 不用 LLM，env 里不带 ANTHROPIC/CLAUDE/AGNO key。
 common-env: &common-env
   OSS_REGION:           ${vars.region}
   OSS_BUCKET:           ${vars.ossBucket}
@@ -68,12 +63,12 @@ common-container: &common-container
   port:    9000
 
 resources:
-  vista-realtime:
+  vista-realtime-cron:
     component: fc3
     props:
       region: ${vars.region}
       function:
-        functionName: vista-realtime${vars.functionSuffix}
+        functionName: vista-realtime-cron${vars.functionSuffix}
         runtime: custom-container
         role: ${vars.roleArn}
         timeout: 360
@@ -88,20 +83,13 @@ resources:
         customContainerConfig:
           <<: *common-container
           args: ["handlers.vista_realtime:handler"]
-      # 热备模式默认开启 cron；REALTIME_TRIGGER_ENABLE=false 切到纯 HTTP/SDK 触发。
       triggers:
         - name: realtime-tick
           type: timer
           config:
             cronExpression: "@every 1m"
-            enable: ${env.REALTIME_TRIGGER_ENABLE|true}
+            enable: ${env.REALTIME_CRON_ENABLE|true}
+            # payload 是占位 — 真正的 user_hash / workspace_id 由 vista-realtime 启动时
+            # 从 OSS 列出的策略清单决定。改造路线见 docs/PLAYBOOK.md §6。
             payload: |
               {"tenant":{"user_hash":"<hash>","workspace_id":"FTS_XXX","workspace_kind":"realtime","run_id":"auto","requested_at":"1970-01-01T00:00:00Z"},"payload":{"strategy_toml_uri":"oss://vista-fc-dev/user_data/<hash>/realtime/FTS_XXX/strategy.toml","update_mode":"auto","push_targets":["default"]}}
-      # 预留实例：始终保留 N 个暖容器，把冷启动从 5-15s 压到 ~0s。
-      # target=0 等同于关闭预留（也可以直接 s remove -t s.realtime-warm.yaml）。
-      # alwaysAllocateCPU=true 让 FC 在空闲时也保留 CPU，下次调用没有重新分配的延迟。
-      # 仅交易时段需要的话，加 scheduledActions（详见 fc3 component 文档）。
-      provisionConfig:
-        qualifier: LATEST
-        target: ${env.REALTIME_PROVISION_TARGET|1}
-        alwaysAllocateCPU: true

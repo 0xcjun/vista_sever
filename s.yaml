@@ -240,34 +240,8 @@ resources:
           <<: *common-container
           args: ["handlers.deadletter:handler"]
 
-  vista-realtime:
-    component: fc3
-    props:
-      region: ${vars.region}
-      function:
-        functionName: vista-realtime${vars.functionSuffix}
-        runtime: custom-container
-        role: ${vars.roleArn}
-        timeout: 360
-        memorySize: 4096
-        cpu: 1
-        diskSize: 512
-        vpcConfig: *common-vpc
-        nasConfig: *common-nas
-        logConfig: *common-log
-        environmentVariables:
-          <<: *common-env
-        customContainerConfig:
-          <<: *common-container
-          args: ["handlers.vista_realtime:handler"]
-      triggers:
-        - name: realtime-tick
-          type: timer
-          config:
-            cronExpression: "@every 1m"
-            enable: ${env.REALTIME_TRIGGER_ENABLE|false}
-            payload: |
-              {"tenant":{"user_hash":"<hash>","workspace_id":"FTS_XXX","workspace_kind":"realtime","run_id":"auto","requested_at":"1970-01-01T00:00:00Z"},"payload":{"strategy_toml_uri":"oss://vista-fc-dev/user_data/<hash>/realtime/FTS_XXX/strategy.toml","update_mode":"auto","push_targets":["default"]}}
+  # vista-realtime 拆到独立部署 — 见 s.realtime-cron.yaml / s.realtime-event.yaml。
+  # s.yaml 只管研究全栈（factor-* / strategy-backtest / deadletter / fnf flows）。
 
   research-pipeline-flow:
     component: fnf
