@@ -12,7 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Incremented on any breaking contract change (field removed, type narrowed,
 # required field added). Minor non-breaking additions keep the same version.
-# Migration strategy is documented in docs/PLAYBOOK.md#schema-migration.
 SCHEMA_VERSION: Final[str] = "1.0"
 
 

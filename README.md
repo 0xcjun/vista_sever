@@ -24,9 +24,7 @@ scripts/docker_run.sh factor_detect tests/fixtures/events/factor_detect_min.json
 
 ## 文档
 
-- **完整指南**：[docs/GUIDE.md](docs/GUIDE.md) — 本地测试、镜像构建、阿里云部署、调用方式、故障排除
-- 运维剧本：[docs/RUNBOOK.md](docs/RUNBOOK.md)
-- 设计文档：[docs/superpowers/specs/2026-04-22-vista-fc-encapsulation-design.md](docs/superpowers/specs/2026-04-22-vista-fc-encapsulation-design.md)
+- **完整指南**：[docs/GUIDE.md](docs/GUIDE.md) — 怎么测、怎么调、怎么上生产，三件事一份文档
 
 ## 函数
 
