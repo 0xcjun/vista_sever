@@ -6,7 +6,7 @@ Runs BEFORE `s deploy` so authors get fast feedback on typos and broken refs.
 Checks:
   1. YAML loadable
   2. required top-level keys: version, type, name, steps
-  3. every task's resourceArn points to a known function name (loaded from s.yaml)
+  3. every task's resourceArn points to a known function name (loaded from all s.*.yaml)
   4. every `goto` target is a step that exists in the flow
   5. every flow type=flow node references a real flow by name
 
@@ -30,40 +30,50 @@ ROOT = Path(__file__).resolve().parent.parent
 FLOWS_DIR = ROOT / "flows"
 
 
-def _load_s_yaml() -> dict[str, Any]:
-    with (ROOT / "s.yaml").open() as f:
-        return yaml.safe_load(f)
+def _load_s_yamls() -> list[dict[str, Any]]:
+    """Load every s.*.yaml in repo root (per-function + flows + realtime variants).
+
+    The single s.yaml monolith was split into per-function deployments;
+    validate-flow needs to know about every fc3 resource declared anywhere.
+    """
+    docs: list[dict[str, Any]] = []
+    for path in sorted(ROOT.glob("s.*.yaml")):
+        with path.open() as f:
+            docs.append(yaml.safe_load(f) or {})
+    return docs
 
 
 def _strip_vars(s: str) -> str:
     return re.sub(r"\$\{[^}]+\}", "", s).strip()
 
 
-def _fc_functions(s_yaml: dict[str, Any]) -> set[str]:
+def _fc_functions(s_yamls: list[dict[str, Any]]) -> set[str]:
     names: set[str] = set()
-    for _res_name, res in (s_yaml.get("resources") or {}).items():
-        if not isinstance(res, dict):
-            continue
-        if res.get("component") != "fc3":
-            continue
-        fn = res.get("props", {}).get("function", {}).get("functionName", "")
-        base = _strip_vars(str(fn))
-        if base:
-            names.add(base)
+    for s_yaml in s_yamls:
+        for _res_name, res in (s_yaml.get("resources") or {}).items():
+            if not isinstance(res, dict):
+                continue
+            if res.get("component") != "fc3":
+                continue
+            fn = res.get("props", {}).get("function", {}).get("functionName", "")
+            base = _strip_vars(str(fn))
+            if base:
+                names.add(base)
     return names
 
 
-def _flow_names(s_yaml: dict[str, Any]) -> set[str]:
+def _flow_names(s_yamls: list[dict[str, Any]]) -> set[str]:
     names: set[str] = set()
-    for _res_name, res in (s_yaml.get("resources") or {}).items():
-        if not isinstance(res, dict):
-            continue
-        if res.get("component") != "fnf":
-            continue
-        fn = res.get("props", {}).get("name", "")
-        base = _strip_vars(str(fn))
-        if base:
-            names.add(base)
+    for s_yaml in s_yamls:
+        for _res_name, res in (s_yaml.get("resources") or {}).items():
+            if not isinstance(res, dict):
+                continue
+            if res.get("component") != "fnf":
+                continue
+            fn = res.get("props", {}).get("name", "")
+            base = _strip_vars(str(fn))
+            if base:
+                names.add(base)
     return names
 
 
@@ -140,9 +150,9 @@ def validate_file(path: Path, fc_functions: set[str], flow_names: set[str]) -> l
 
 
 def main() -> int:
-    s_yaml = _load_s_yaml()
-    fc_functions = _fc_functions(s_yaml)
-    flow_names = _flow_names(s_yaml)
+    s_yamls = _load_s_yamls()
+    fc_functions = _fc_functions(s_yamls)
+    flow_names = _flow_names(s_yamls)
 
     paths = [Path(p) for p in sys.argv[1:]] or sorted(FLOWS_DIR.glob("*.fdl"))
     all_errs: list[str] = []

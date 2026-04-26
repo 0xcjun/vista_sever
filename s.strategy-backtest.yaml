@@ -1,0 +1,81 @@
+edition: 3.0.0
+name: vista-fc-strategy-backtest
+
+# strategy-backtest 单函数部署 — wbt 综合回测。
+# 与其它 s.{function}.yaml / s.flows.yaml / s.realtime-*.yaml 完全独立。
+# Anchor 与同目录其它 s.*.yaml 保持同步（无 LLM 变体）。
+
+access: ${env.FC_ACCESS|default}
+
+vars:
+  region:           ${env.FC_REGION|cn-hangzhou}
+  accountId:        ${env.ALIYUN_ACCOUNT_ID}
+  ossBucket:        ${env.OSS_BUCKET|vista-fc-dev}
+  imageRegistry:    registry.${vars.region}.aliyuncs.com/vista/vista-fc-base
+  imageTag:         ${env.GIT_SHA|latest}
+  nasMountTarget:   ${env.NAS_MOUNT_TARGET}
+  vpcId:            ${env.VPC_ID}
+  vswitchId:        ${env.VSWITCH_ID}
+  securityGroupId:  ${env.SG_ID}
+  logProject:       ${env.LOG_PROJECT|vista-fc}
+  logStore:         ${env.LOG_STORE|handlers}
+  roleArn:          acs:ram::${vars.accountId}:role/fc-vista-role
+  functionSuffix:   ${env.FC_SUFFIX|""}
+
+common-vpc: &common-vpc
+  vpcId: ${vars.vpcId}
+  vswitchIds:
+    - ${vars.vswitchId}
+  securityGroupId: ${vars.securityGroupId}
+
+common-nas: &common-nas
+  userId: 10003
+  groupId: 10003
+  mountPoints:
+    - serverAddr: ${vars.nasMountTarget}
+      mountDir:   /mnt/vista-cache
+
+common-log: &common-log
+  project:  ${vars.logProject}
+  logstore: ${vars.logStore}
+  enableRequestMetrics: true
+
+common-env: &common-env
+  OSS_REGION:           ${vars.region}
+  OSS_BUCKET:           ${vars.ossBucket}
+  NAS_CACHE_ROOT:       /mnt/vista-cache
+  VISTA_DB_TYPE:        ${env.VISTA_DB_TYPE|"duckdb"}
+  DUCKDB_PATH:          ${env.DUCKDB_PATH|"/mnt/vista-cache/factor.duckdb"}
+  VISTA_RESEARCH_PATH:  ${env.VISTA_RESEARCH_PATH|"/mnt/vista-cache/research"}
+  CLICKHOUSE_DSN:       ${env.CLICKHOUSE_DSN|""}
+  CZSC_TOKEN:           ${env.CZSC_TOKEN|""}
+  CZSC_DATA_API:        ${env.CZSC_DATA_API|"https://api.zbczsc.com"}
+  LOG_FORMAT:           json
+  TZ:                   Asia/Shanghai
+
+common-container: &common-container
+  image:   ${vars.imageRegistry}:${vars.imageTag}
+  command: ["python", "-m", "vista_fc.runtime.adapter"]
+  port:    9000
+
+resources:
+  strategy-backtest:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: strategy-backtest${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 1860
+        memorySize: 8192
+        cpu: 2
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.strategy_backtest:handler"]

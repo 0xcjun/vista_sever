@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Deploy only one function to shorten preflight time.
-s deploy factor-detect --access "${FC_ACCESS}" --assume-yes
+s deploy -t s.factor-detect.yaml --access "${FC_ACCESS}" --assume-yes
 echo "ok: factor-detect${FC_SUFFIX} deployed"

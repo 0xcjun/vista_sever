@@ -8,7 +8,7 @@
 
 FC3 支持版本 + 别名（alias）。发布流程：
 
-1. 推镜像并部署到 `LATEST` 版本（每次 `s deploy` 都会把最新 qualifier 指向 LATEST）。
+1. 推镜像并部署到 `LATEST` 版本（每次 `s deploy -t s.<fn>.yaml` 都会把最新 qualifier 指向 LATEST）。
 2. 用 `s cli fc publish-version --function-name factor-detect --access prod` 创建一个不可变版本 `N`。
 3. 创建/更新别名 `stable`（承担 90% 流量）和 `canary`（10%）：
 
@@ -61,7 +61,7 @@ FC3 支持版本 + 别名（alias）。发布流程：
 
 ### 3.1 事件层幂等（handler 级）
 
-- 默认**关**。通过 `VISTA_FC_IDEMPOTENCY=1` 开启（可放 s.yaml 的 environmentVariables）。
+- 默认**关**。通过 `VISTA_FC_IDEMPOTENCY=1` 开启（可放各 `s.*.yaml` 的 `environmentVariables`，或 deploy 前 export）。
 - 幂等键：`user_data/{user_hash}/idempotency/{function_name}/{run_id}.json`。
 - FnF 重试会沿用同 `run_id`，命中幂等时直接返回缓存 envelope。
 - 失败不落 tombstone，可继续重试。
@@ -149,24 +149,47 @@ uv run pytest tests/perf --benchmark-compare=main --benchmark-compare-fail=mean:
 
 ---
 
-## 6. 实盘部署 — cron 与 event 两条路径
+## 6. 部署矩阵 — 11 个独立 yaml
 
-vista-realtime 拆成**两个独立函数 + 各自的 yaml**，与研究全栈（`s.yaml`）也完全分开。三套部署互不干涉，可以任意组合启用。
+仓库里**没有 monolithic `s.yaml`**。每个函数 / flow / realtime 变体一份独立 `s.*.yaml`，可以按需单独部署、单独回滚、单独换镜像 tag。
+
+### 研究全栈（8 函数 + 3 flow）
+
+| Yaml | 资源 | 触发 |
+|---|---|---|
+| `s.factor-plan.yaml` | factor-plan | LLM 调用 → plan |
+| `s.factor-builder.yaml` | factor-builder | LLM 调用 → 因子代码 |
+| `s.factor-detect.yaml` | factor-detect | 真数据评估 |
+| `s.factor-duplicate.yaml` | factor-duplicate | 去重 |
+| `s.factor-evaluate.yaml` | factor-evaluate | 策略建模评估（最重） |
+| `s.factor-filter.yaml` | factor-filter | top-N 筛选 |
+| `s.strategy-backtest.yaml` | strategy-backtest | wbt 综合回测 |
+| `s.deadletter.yaml` | deadletter | FnF catch.goto 兜底 |
+| `s.flows.yaml` | research-pipeline / backtest-fanout / research-full | FnF 编排 |
+
+```bash
+# 一把 deploy 全栈（按 deploy_all.sh 里的顺序）
+bash scripts/deploy_all.sh
+
+# 单独 deploy 某个函数（推荐做法 — 跑得快、回滚粒度细）
+s deploy -t s.factor-detect.yaml --access dev --assume-yes
+
+# 单独 redeploy 一个函数换新镜像
+GIT_SHA=<sha> s deploy -t s.factor-detect.yaml --access prod --assume-yes
+```
+
+外部调用路径走 FnF（`s.flows.yaml` 里的 3 个 flow），FnF 自带 step checkpoint resume — 失败 step 修好后重跑 executionName，已 succeed 的 step 自动跳过。
+
+### 实盘信号（cron 与 event 两条路径）
 
 | Yaml | 函数名 | 触发 | 预留 | 用途 |
 |---|---|---|---|---|
-| `s.yaml` | factor-* / strategy-backtest / deadletter / fnf flows | — | — | 研究全栈（plan→builder→detect→...→backtest） |
 | `s.realtime-cron.yaml` | `vista-realtime-cron${suffix}` | `@every 1m` 定时 | ❌ | 自动 tick；cron 连续触发让实例自然撑温 |
 | `s.realtime-event.yaml` | `vista-realtime-event${suffix}` | 无（SDK / 函数 URL 直调） | ✅ 1 实例 | 外部事件推送，要 sub-second 响应 |
 
 两个 realtime 函数共用同一个 `handlers.vista_realtime:handler` 镜像，**只差在触发方式和预留**。
 
-### 部署 / 切换
-
 ```bash
-# 研究全栈
-s deploy
-
 # 定时实盘信号
 s deploy -t s.realtime-cron.yaml
 
@@ -178,7 +201,7 @@ s remove -t s.realtime-cron.yaml
 s remove -t s.realtime-event.yaml
 ```
 
-三个 yaml 函数名不同，**可以同时全部部署**。如果你只跑实盘不要研究，跳过 `s deploy` 即可。
+11 个 yaml 函数名互不冲突，**可以同时全部部署**；如果只跑实盘不要研究，跳过 `scripts/deploy_all.sh` 即可。
 
 ### 选哪种 realtime？
 

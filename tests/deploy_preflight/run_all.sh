@@ -6,7 +6,7 @@
 #   FC_ACCESS=dev-preflight        (access alias with scoped RAM)
 #   GIT_SHA=$(git rev-parse --short HEAD)
 #   FC_SUFFIX="-preflight-${GIT_SHA}"
-#   Plus everything s.yaml vars consume (OSS_BUCKET=vista-fc-preflight, etc.)
+#   Plus everything any s.*.yaml vars block consumes (OSS_BUCKET=vista-fc-preflight, etc.)
 
 set -euo pipefail
 

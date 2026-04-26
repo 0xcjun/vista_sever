@@ -42,7 +42,7 @@ FC 函数实例必须选 x86 架构。
    - `VISTA_LLM_RATE_LIMIT` / `CLICKHOUSE_CONNECT` / `OSS_READ_FAIL` 等
      retriable：看 FnF retry 是否生效，若 FC 直调可考虑加并发限流
    - `VISTA_LOGIC_ERROR`：回滚镜像
-     `GIT_SHA=<old_sha> s deploy --access prod`
+     `GIT_SHA=<old_sha> s deploy -t s.<failed-fn>.yaml --access prod --assume-yes`
    - `INPUT_VALIDATION`：调用方输入错，不是函数问题
 
 ### FnF execution 卡住
@@ -73,15 +73,17 @@ s cli fnf DescribeExecution --name research-pipeline --execution-name <name> --a
 
 1. `docker pull registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base:<sha>` 本地验证
 2. 检查 FC 函数角色是否有 `cr:PullArtifact`
-3. 重新 `s deploy` 触发 FC 重新拉取
+3. 重新 `s deploy -t s.<fn>.yaml` 触发 FC 重新拉取
 
 ### dev 环境被搞脏
 
 ```bash
-# 全拆
-FC_ACCESS=dev s remove --access dev --assume-yes
-# 重新部署
-GIT_SHA=<sha> s deploy --access dev --assume-yes
+# 全拆（按 deploy_all.sh 反向 remove，或手动逐个 s.*.yaml）
+for f in s.factor-*.yaml s.strategy-backtest.yaml s.deadletter.yaml s.flows.yaml s.realtime-*.yaml; do
+  s remove -t "$f" --access dev --assume-yes
+done
+# 重新部署研究全栈
+GIT_SHA=<sha> FC_ACCESS=dev bash scripts/deploy_all.sh
 ```
 
 ## 发版流程
@@ -99,8 +101,10 @@ GIT_SHA=<sha> s deploy --access dev --assume-yes
 ```bash
 # 找到上一个好版本
 git log --oneline --grep="feat\|fix" | head -5
-# 用老 sha 重部
-GIT_SHA=<old_sha> s deploy --access prod --assume-yes
+# 用老 sha 重部全栈
+GIT_SHA=<old_sha> FC_ACCESS=prod bash scripts/deploy_all.sh
+# 或单独回退某个函数（粒度更细）
+GIT_SHA=<old_sha> s deploy -t s.factor-detect.yaml --access prod --assume-yes
 ```
 
 ## 联系人
