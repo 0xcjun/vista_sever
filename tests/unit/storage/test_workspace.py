@@ -56,6 +56,43 @@ def test_pull_to_tmp_downloads_and_returns_path(tmp_path: Path) -> None:
     assert etag == '"e1"'
 
 
+def test_pull_to_tmp_isolates_by_user_hash(tmp_path: Path) -> None:
+    """Two tenants sharing a workspace_id but with different user_hash must
+    never collide on the local tmp path (strong isolation)."""
+    oss_a = MagicMock()
+    oss_b = MagicMock()
+    for m in (oss_a, oss_b):
+        m.get_to_file.side_effect = lambda *, key, local_path: (
+            local_path.parent.mkdir(parents=True, exist_ok=True),
+            local_path.write_bytes(b"duck"),
+        )
+        m.head.return_value = ObjectMeta(etag='"e"', size_bytes=4)
+
+    tenant_a = TenantContext(
+        user_hash="u_aaa",
+        workspace_id="EXP_001",
+        workspace_kind="research",
+        run_id="r1",
+        requested_at=datetime.now(UTC),
+    )
+    tenant_b = TenantContext(
+        user_hash="u_bbb",
+        workspace_id="EXP_001",
+        workspace_kind="research",
+        run_id="r2",
+        requested_at=datetime.now(UTC),
+    )
+    ws_a = WorkspaceStorage(oss=oss_a, tenant=tenant_a, tmp_root=tmp_path)
+    ws_b = WorkspaceStorage(oss=oss_b, tenant=tenant_b, tmp_root=tmp_path)
+
+    path_a, _ = ws_a.pull_to_tmp(oss_key="user_data/u_aaa/research/EXP_001/factors.duckdb")
+    path_b, _ = ws_b.pull_to_tmp(oss_key="user_data/u_bbb/research/EXP_001/factors.duckdb")
+
+    assert path_a != path_b, "same workspace_id + different user_hash must resolve to different tmp paths"
+    assert "u_aaa" in str(path_a)
+    assert "u_bbb" in str(path_b)
+
+
 def test_push_from_tmp_builds_artifact(tmp_path: Path) -> None:
     src = tmp_path / "factors.duckdb"
     src.write_bytes(b"abc")

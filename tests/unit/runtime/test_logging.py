@@ -29,6 +29,52 @@ def test_json_line_has_required_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec["level"] == "INFO"
 
 
+def test_redacts_sk_api_key_in_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    sink = StringIO()
+    monkeypatch.setenv("LOG_FORMAT", "json")
+    configure_logging(sink=sink)
+    from loguru import logger
+
+    logger.info(
+        "calling anthropic with key sk-ant-api03-XyZ1234567890abcdefGHIJKLMNop to finish"
+    )  # pragma: allowlist secret
+    rec = json.loads(sink.getvalue().splitlines()[0])
+    assert "sk-ant-api03-XyZ1234567890abcdefGHIJKLMNop" not in rec["message"]  # pragma: allowlist secret
+    assert "***REDACTED***" in rec["message"]
+
+
+def test_redacts_bearer_token_in_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    sink = StringIO()
+    monkeypatch.setenv("LOG_FORMAT", "json")
+    configure_logging(sink=sink)
+    from loguru import logger
+
+    logger.info("header Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.AAAA.BBBB")
+    rec = json.loads(sink.getvalue().splitlines()[0])
+    assert "eyJhbGci" not in rec["message"]
+    assert "***REDACTED***" in rec["message"]
+
+
+def test_redacts_secret_extra_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    sink = StringIO()
+    monkeypatch.setenv("LOG_FORMAT", "json")
+    configure_logging(sink=sink)
+    from loguru import logger
+
+    logger.bind(
+        access_key_id="LTAI-aaaaaaaaaaaaaa",  # pragma: allowlist secret  # gitleaks:allow
+        api_token="tok_ABCDEF123",  # pragma: allowlist secret  # gitleaks:allow
+        password="hunter2",  # pragma: allowlist secret  # gitleaks:allow
+        normal_field="safe",
+    ).info("boot")
+
+    # Secret-named extras must never leak to the sink, regardless of whitelist.
+    for banned in ("LTAI-aaaaaaaaaaaaaa", "tok_ABCDEF123", "hunter2"):
+        assert banned not in sink.getvalue()
+    # Sanity: the line is still valid JSON.
+    json.loads(sink.getvalue().splitlines()[0])
+
+
 def test_console_format_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     sink = StringIO()
     monkeypatch.setenv("LOG_FORMAT", "console")

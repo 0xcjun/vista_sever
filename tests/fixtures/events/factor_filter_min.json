@@ -9,7 +9,7 @@
   "payload": {
     "factors_db_uri": "oss://vista-fc-dev/user_data/u_local_dev/research/EXP_LOCAL/factors.duckdb",
     "problem_codes": [
-      "FTS_A504A636"
+      "FTS_PROBLEM_A504A636"
     ],
     "route_codes": [
       "9e9bc0998d63",

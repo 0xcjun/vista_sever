@@ -219,6 +219,27 @@ resources:
           <<: *common-container
           args: ["handlers.strategy_backtest:handler"]
 
+  deadletter:
+    component: fc3
+    props:
+      region: ${vars.region}
+      function:
+        functionName: deadletter${vars.functionSuffix}
+        runtime: custom-container
+        role: ${vars.roleArn}
+        timeout: 60
+        memorySize: 512
+        cpu: 0.5
+        diskSize: 512
+        vpcConfig: *common-vpc
+        nasConfig: *common-nas
+        logConfig: *common-log
+        environmentVariables:
+          <<: *common-env
+        customContainerConfig:
+          <<: *common-container
+          args: ["handlers.deadletter:handler"]
+
   vista-realtime:
     component: fc3
     props:

@@ -126,3 +126,68 @@ def test_exists_returns_bool(mock_oss2: MagicMock, monkeypatch: pytest.MonkeyPat
 
     c = OssClient.from_env()
     assert c.exists(key="x") is True
+
+
+@patch("vista_fc.runtime.retry.time.sleep", lambda _d: None)  # skip backoff in tests
+@patch("vista_fc.storage.oss_client.oss2")
+def test_head_retries_transient_server_error(mock_oss2: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    _mk_env(monkeypatch)
+
+    class _ServerError(Exception):
+        pass
+
+    _ServerError.__module__ = "oss2.exceptions"
+    _ServerError.__name__ = "ServerError"
+
+    mock_bucket = MagicMock()
+    calls = {"n": 0}
+
+    def _head(_key):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _ServerError("5xx")
+        h = MagicMock(etag='"e"', content_length=1)
+        return h
+
+    mock_bucket.head_object.side_effect = _head
+    mock_oss2.Bucket.return_value = mock_bucket
+
+    from vista_fc.storage.oss_client import OssClient
+
+    c = OssClient.from_env()
+    meta = c.head(key="a.txt")
+    assert meta.etag == '"e"'
+    assert calls["n"] == 3, "expected retry on transient server error"
+
+
+@patch("vista_fc.runtime.retry.time.sleep", lambda _d: None)
+@patch("vista_fc.storage.oss_client.oss2")
+def test_put_does_not_retry_precondition_failed(
+    mock_oss2: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mk_env(monkeypatch)
+
+    class _Precond(Exception):
+        pass
+
+    _Precond.__module__ = "oss2.exceptions"
+    _Precond.__name__ = "PreconditionFailed"
+
+    mock_bucket = MagicMock()
+    calls = {"n": 0}
+
+    def _put(_key, _path, headers=None):  # noqa: ARG001
+        calls["n"] += 1
+        raise _Precond("412")
+
+    mock_bucket.put_object_from_file.side_effect = _put
+    mock_oss2.Bucket.return_value = mock_bucket
+
+    from vista_fc.storage.oss_client import OssClient
+
+    c = OssClient.from_env()
+    src = tmp_path / "x.bin"
+    src.write_bytes(b"x")
+    with pytest.raises(_Precond):
+        c.put_from_file(key="x", local_path=src, if_match_etag='"stale"')
+    assert calls["n"] == 1, "PreconditionFailed must not be retried"

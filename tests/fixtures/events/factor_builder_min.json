@@ -8,7 +8,7 @@
   },
   "payload": {
     "routes_toml_uri": "oss://vista-fc-dev/user_data/u_local_dev/research/EXP_LOCAL/factor_routes.toml",
-    "builder_type": "agno_team",
+    "builder_type": "agno_agent",
     "factor_numbers": 2,
     "batch_size": 2,
     "max_workers": 1,

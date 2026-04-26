@@ -65,12 +65,23 @@ WORKDIR /app
 
 COPY --from=builder /app /app
 
+# Non-root runtime. Use a fixed UID/GID so FC log/file ownership is stable
+# across deploys and readable by CI tooling that mounts the image.
+RUN groupadd --system --gid 10001 vista \
+    && useradd --system --uid 10001 --gid 10001 --home /home/vista --shell /usr/sbin/nologin vista \
+    && mkdir -p /home/vista /tmp/vista-fc \
+    && chown -R vista:vista /app /home/vista /tmp/vista-fc
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app/src:/app \
     PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
     LOG_FORMAT=json \
-    FC_SERVER_PORT=9000
+    FC_SERVER_PORT=9000 \
+    HOME=/home/vista \
+    VISTA_FC_TMP_ROOT=/tmp/vista-fc
+
+USER vista:vista
 
 EXPOSE 9000
 

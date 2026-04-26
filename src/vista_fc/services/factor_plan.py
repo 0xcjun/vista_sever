@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
+from functools import partial
 
+import anyio
 from vista.agents.factor_plan import FactorPlanAgent
 
 from vista_fc.contracts.common import TenantContext
@@ -28,7 +29,10 @@ def factor_plan_service(
         interactive=payload.interactive,
         verbose=False,
     )
-    result = asyncio.run(agent.plan(payload.user_input))
+    # anyio.run is backend-agnostic (asyncio/trio) and — unlike asyncio.run —
+    # keeps us compatible with a future async handler migration without changing
+    # this call site.
+    result = anyio.run(partial(agent.plan, payload.user_input))
 
     toml_local = workspace.tmp_root / f"factor_routes_{tenant.run_id}.toml"
     toml_local.parent.mkdir(parents=True, exist_ok=True)

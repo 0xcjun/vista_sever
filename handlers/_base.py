@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime as _dt
 import os
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,15 @@ from pydantic import BaseModel
 from vista_fc.contracts.common import ArtifactRef, EnvelopeOut, TenantContext
 from vista_fc.runtime.context import parse_envelope_in
 from vista_fc.runtime.errors import classify
+from vista_fc.runtime.idempotency import IdempotencyStore, tombstone_key
+from vista_fc.runtime.idempotency import is_enabled as idempotency_enabled
 from vista_fc.runtime.logging import configure_logging, log_context
+from vista_fc.runtime.metrics import (
+    HANDLER_DURATION_MS,
+    HANDLER_ERROR_TOTAL,
+    HANDLER_STATUS_TOTAL,
+    emit_metric,
+)
 from vista_fc.storage.oss_client import OssClient
 from vista_fc.storage.workspace import WorkspaceStorage
 
@@ -113,12 +122,28 @@ def run_handler[P: BaseModel, R: BaseModel](
     tenant = envelope.tenant
     workspace = _build_workspace(tenant)
 
+    # Idempotency: on replay with the same (function_name, user_hash, run_id),
+    # return the previously stored envelope instead of re-running the service.
+    idem_store: IdempotencyStore | None = None
+    idem_key: str | None = None
+    if idempotency_enabled():
+        idem_store = IdempotencyStore(workspace.oss)
+        idem_key = tombstone_key(
+            user_hash=tenant.user_hash,
+            function_name=function_name,
+            run_id=tenant.run_id,
+        )
+        cached = idem_store.lookup(idem_key)
+        if cached is not None:
+            return cached
+
     with log_context(
         run_id=tenant.run_id,
         user_hash=tenant.user_hash,
         workspace_id=tenant.workspace_id,
         function_name=function_name,
     ):
+        started = time.perf_counter()
         try:
             logger.info("invoke start")
             payload_out: R = service(
@@ -136,10 +161,29 @@ def run_handler[P: BaseModel, R: BaseModel](
                 payload=payload_out,
             )
             logger.info("invoke ok")
-            return out.model_dump(mode="json")
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            emit_metric(name=HANDLER_DURATION_MS, value=duration_ms, unit="ms", status="succeeded")
+            emit_metric(name=HANDLER_STATUS_TOTAL, value=1, status="succeeded")
+            result = out.model_dump(mode="json")
+            if idem_store is not None and idem_key is not None and not idem_store.claim(idem_key, result):
+                # Race: if another worker wrote the tombstone first, prefer its
+                # envelope so both callers return identical bytes.
+                winner = idem_store.lookup(idem_key)
+                if winner is not None:
+                    return winner
+            return result
         except Exception as e:  # noqa: BLE001
             err = classify(e)
             logger.error(f"invoke failed: {err.code} {err.message}")
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            emit_metric(name=HANDLER_DURATION_MS, value=duration_ms, unit="ms", status="failed")
+            emit_metric(name=HANDLER_STATUS_TOTAL, value=1, status="failed")
+            emit_metric(
+                name=HANDLER_ERROR_TOTAL,
+                value=1,
+                status="failed",
+                error_code=err.code,
+            )
             out_err = EnvelopeOut[output_cls](  # type: ignore[valid-type]
                 tenant=tenant,
                 status="failed",
@@ -150,4 +194,5 @@ def run_handler[P: BaseModel, R: BaseModel](
                     "trace_id": err.trace_id,
                 },
             )
+            # Failures skip the tombstone so retries can succeed.
             return out_err.model_dump(mode="json")

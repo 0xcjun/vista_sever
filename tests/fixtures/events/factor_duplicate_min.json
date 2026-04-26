@@ -14,7 +14,7 @@
       "b28371270499"
     ],
     "problem_codes": [
-      "FTS_A504A636"
+      "FTS_PROBLEM_A504A636"
     ],
     "threshold": 0.8,
     "max_workers": 1,

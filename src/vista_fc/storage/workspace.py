@@ -66,7 +66,12 @@ class WorkspaceStorage:
         return f"{self._user_root()}/realtime/{self.tenant.workspace_id}/{strategy_basename}"
 
     def pull_to_tmp(self, *, oss_key: str) -> tuple[Path, str]:
-        local = self.tmp_root / self.tenant.workspace_id / Path(oss_key).name
+        # Strong isolation: user_hash first so two tenants sharing a workspace_id
+        # never collide on local tmp. run_id scopes within a single invocation so
+        # concurrent runs by the same user don't overwrite each other's tmp files.
+        local = (
+            self.tmp_root / self.tenant.user_hash / self.tenant.workspace_id / self.tenant.run_id / Path(oss_key).name
+        )
         local.parent.mkdir(parents=True, exist_ok=True)
         self.oss.get_to_file(key=oss_key, local_path=local)
         meta = self.oss.head(key=oss_key)

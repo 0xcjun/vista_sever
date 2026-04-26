@@ -23,7 +23,7 @@ def factor_evaluate_service(
     payload: FactorEvaluateInput,
     workspace: WorkspaceStorage,
 ) -> FactorEvaluateOutput:
-    db_local, _ = pull_object(workspace, oss_uri=payload.factors_db_uri)
+    db_local, db_etag = pull_object(workspace, oss_uri=payload.factors_db_uri)
     ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     if payload.models_config_uri:
@@ -52,7 +52,13 @@ def factor_evaluate_service(
     uri = f"oss://{workspace.oss.bucket_name}/{key}"
     artifact = push_object(workspace, local_path=report_local, oss_uri=uri, kind="report_json")
     # 回写 duckdb (evaluate 把评估指标写入 factor_evaluates 表)
-    push_object(workspace, local_path=db_local, oss_uri=payload.factors_db_uri, kind="duckdb")
+    push_object(
+        workspace,
+        local_path=db_local,
+        oss_uri=payload.factors_db_uri,
+        kind="duckdb",
+        if_match_etag=db_etag,
+    )
 
     problem_stats = dumped.get("problem_stats", []) or []
     n_success = sum(int(p.get("n_success", 0)) for p in problem_stats)

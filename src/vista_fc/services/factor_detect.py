@@ -35,8 +35,8 @@ def factor_detect_service(
     payload: FactorDetectInput,
     workspace: WorkspaceStorage,
 ) -> FactorDetectOutput:
-    # 1. pull factors.duckdb
-    db_local, _etag = pull_object(workspace, oss_uri=payload.factors_db_uri)
+    # 1. pull factors.duckdb  (keep etag for optimistic-lock writeback below)
+    db_local, db_etag = pull_object(workspace, oss_uri=payload.factors_db_uri)
     ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     # 2. optional problems_map
@@ -69,7 +69,13 @@ def factor_detect_service(
         oss_uri=report_uri,
         kind="report_json",
     )
-    push_object(workspace, local_path=db_local, oss_uri=payload.factors_db_uri, kind="duckdb")
+    push_object(
+        workspace,
+        local_path=db_local,
+        oss_uri=payload.factors_db_uri,
+        kind="duckdb",
+        if_match_etag=db_etag,
+    )
 
     # vista's FactorDetectBatchReport uses `total` not `total_factors`;
     # we fall back to `total_factors` in case the report shape ever changes.

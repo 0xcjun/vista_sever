@@ -27,7 +27,7 @@ def factor_duplicate_service(
     payload: FactorDuplicateInput,
     workspace: WorkspaceStorage,
 ) -> FactorDuplicateOutput:
-    db_local, _ = pull_object(workspace, oss_uri=payload.factors_db_uri)
+    db_local, db_etag = pull_object(workspace, oss_uri=payload.factors_db_uri)
     ensure_research_data(workspace, oss_uri=payload.research_data_uri)
 
     model_cfg = None
@@ -55,7 +55,13 @@ def factor_duplicate_service(
     uri = f"oss://{workspace.oss.bucket_name}/{key}"
     artifact = push_object(workspace, local_path=report_local, oss_uri=uri, kind="report_json")
     # 回写 duckdb (duplicate 内部对重复因子打 soft-delete 标签)
-    push_object(workspace, local_path=db_local, oss_uri=payload.factors_db_uri, kind="duckdb")
+    push_object(
+        workspace,
+        local_path=db_local,
+        oss_uri=payload.factors_db_uri,
+        kind="duckdb",
+        if_match_etag=db_etag,
+    )
 
     problem_stats = dumped.get("problem_stats", []) or []
     total_input = sum(int(p.get("input", 0)) for p in problem_stats)

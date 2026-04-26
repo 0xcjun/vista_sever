@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import sys
 from collections.abc import Callable, Iterator
 from typing import IO, TYPE_CHECKING, Any, TextIO, cast
@@ -18,6 +19,57 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
+
+_REDACTED = "***REDACTED***"
+
+# Patterns that must never appear in logs regardless of how they reached the record.
+# Kept intentionally conservative: match high-entropy tokens we know the platform
+# uses, not arbitrary long strings (which would eat legitimate payloads).
+_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"sk-[A-Za-z0-9_-]{12,}"),  # Anthropic / OpenAI-style
+    re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]{16,}", re.I),  # OAuth Authorization header
+    re.compile(r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}"),  # JWT
+    re.compile(r"LTAI[A-Za-z0-9]{8,}"),  # Aliyun AccessKeyId
+)
+
+# Extra-field keys whose values are always redacted (case-insensitive substring match).
+_SECRET_KEY_HINTS: tuple[str, ...] = (
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "access_key",
+    "accesskey",
+    "private_key",
+    "authorization",
+    "session_key",
+)
+
+
+def _redact_text(text: str) -> str:
+    out = text
+    for pat in _SECRET_PATTERNS:
+        out = pat.sub(_REDACTED, out)
+    return out
+
+
+def _is_secret_key(key: str) -> bool:
+    low = key.lower()
+    return any(hint in low for hint in _SECRET_KEY_HINTS)
+
+
+def _redact_value(key: str, value: Any) -> Any:
+    if _is_secret_key(key):
+        return _REDACTED
+    if isinstance(value, str):
+        return _redact_text(value)
+    if isinstance(value, dict):
+        return {k: _redact_value(k, v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(key, v) for v in value]
+    return value
 
 
 def _build_json_sink(target: IO[str]) -> Callable[[LoguruMessage], None]:
@@ -32,15 +84,32 @@ def _build_json_sink(target: IO[str]) -> Callable[[LoguruMessage], None]:
         payload: dict[str, Any] = {
             "ts": record["time"].isoformat(),
             "level": record["level"].name,
-            "message": record["message"],
+            "message": _redact_text(record["message"]),
             "module": record["module"],
             "function": record["function"],
             "line": record["line"],
         }
         extra: dict[str, Any] = record["extra"]
-        for key in ("run_id", "user_hash", "workspace_id", "function_name", "phase", "request_id"):
-            if key in extra:
-                payload[key] = extra[key]
+        # Whitelist: only safe context keys are serialized. Any secret-named extra
+        # attached via logger.bind() is dropped entirely.
+        safe_keys = (
+            "run_id",
+            "user_hash",
+            "workspace_id",
+            "function_name",
+            "phase",
+            "request_id",
+            # Metric emission fields (see runtime/metrics.py); fixed-schema, not PII.
+            "event",
+            "metric_name",
+            "metric_value",
+            "metric_unit",
+            "metric_status",
+            "metric_error_code",
+        )
+        for key in safe_keys:
+            if key in extra and not _is_secret_key(key):
+                payload[key] = _redact_value(key, extra[key])
         target.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     return _sink

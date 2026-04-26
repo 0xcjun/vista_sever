@@ -17,7 +17,7 @@ name: research-pipeline
 #
 #   # factor-builder
 #   "build_model": null | "glm-4.7",
-#   "builder_type": "agno_team",        # claude | agno_agent | agno_team
+#   "builder_type": "agno_agent",       # claude | agno_agent | agno_team
 #   "factor_numbers": 20,
 #   "batch_size": 5,
 #   "build_workers": 1,
@@ -40,7 +40,7 @@ name: research-pipeline
 #   "fee_rate": 0.0,
 #
 #   # factor-filter
-#   "problem_codes": ["FTS_A504A636"],   # route_codes 由 builder 动态产出,无需 input
+#   "problem_codes": ["FTS_PROBLEM_A504A636"],   # route_codes 由 builder 动态产出,无需 input
 #   "evaluate_methods": [],
 #   "filter_methods": [],
 #   "positive_extractor": "ratio_across_problems",
@@ -89,7 +89,7 @@ steps:
         maxAttempts: 0
     catch:
       - errors: ["*"]
-        goto: abort
+        goto: deadletter_trap
     timeoutSeconds: 600
 
   - type: task
@@ -124,7 +124,7 @@ steps:
         maxAttempts: 0
     catch:
       - errors: ["*"]
-        goto: abort
+        goto: deadletter_trap
     timeoutSeconds: 3600
 
   - type: task
@@ -152,7 +152,7 @@ steps:
         maxAttempts: 0
     catch:
       - errors: ["*"]
-        goto: abort
+        goto: deadletter_trap
     timeoutSeconds: 300
 
   - type: task
@@ -184,7 +184,7 @@ steps:
         maxAttempts: 0
     catch:
       - errors: ["*"]
-        goto: abort
+        goto: deadletter_trap
     timeoutSeconds: 1800
 
   - type: task
@@ -217,7 +217,7 @@ steps:
         maxAttempts: 0
     catch:
       - errors: ["*"]
-        goto: abort
+        goto: deadletter_trap
     timeoutSeconds: 3600
 
   - type: task
@@ -253,7 +253,7 @@ steps:
         maxAttempts: 0
     catch:
       - errors: ["*"]
-        goto: abort
+        goto: deadletter_trap
     timeoutSeconds: 300
 
   - type: foreach
@@ -300,6 +300,32 @@ steps:
         source: $.tenant
       - target: $.strategy_tomls
         source: $.filter_out.payload.toml_artifacts
+
+  # Dead-letter trap: invoked from every step's `catch`. Writes the failed
+  # function's payload + classified error to OSS so an operator can retrieve
+  # it by run_id without trawling SLS logs, then transitions to abort.
+  - type: task
+    name: deadletter_trap
+    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/deadletter"
+    inputMappings:
+      - target: tenant
+        source: $.tenant
+      - target: payload
+        source: |
+          {
+            "failed_function":  $.error.step,
+            "original_payload": $.error.cause,
+            "error": {
+              "code":      $.error.code,
+              "message":   $.error.message,
+              "retriable": false,
+              "trace_id":  $.error.trace_id
+            }
+          }
+    catch:
+      - errors: ["*"]
+        goto: abort
+    timeoutSeconds: 60
 
   - type: fail
     name: abort

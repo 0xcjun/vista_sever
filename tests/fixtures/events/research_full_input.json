@@ -13,7 +13,7 @@
   "interactive": false,
 
   "build_model": null,
-  "builder_type": "agno_team",
+  "builder_type": "agno_agent",
   "factor_numbers": 4,
   "batch_size": 4,
   "build_workers": 1,
@@ -32,7 +32,7 @@
   "eval_models": ["DirectExposure"],
   "fee_rate": 0.0,
 
-  "problem_codes": ["FTS_A504A636"],
+  "problem_codes": ["FTS_PROBLEM_A504A636"],
   "evaluate_methods": [],
   "filter_methods": [],
   "positive_extractor": "ratio_across_problems",

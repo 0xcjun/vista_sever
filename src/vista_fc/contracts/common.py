@@ -6,9 +6,14 @@ Spec §5.1: TenantContext / EnvelopeIn / EnvelopeOut / ArtifactRef / ErrorInfo.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Incremented on any breaking contract change (field removed, type narrowed,
+# required field added). Minor non-breaking additions keep the same version.
+# Migration strategy is documented in docs/PLAYBOOK.md#schema-migration.
+SCHEMA_VERSION: Final[str] = "1.0"
 
 
 class TenantContext(BaseModel):
@@ -80,3 +85,7 @@ class EnvelopeOut[T: BaseModel](BaseModel):
     metrics: dict[str, float | int | str] = Field(default_factory=dict)
     payload: T | None = None
     error: ErrorInfo | None = None
+    # Explicit schema pin lets consumers assert compat before deserializing. An
+    # FnF flow pinned to 1.0 ignoring a 2.x envelope is safer than silently
+    # passing through fields that moved.
+    schema_version: str = Field(default=SCHEMA_VERSION)

@@ -20,8 +20,17 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import oss2
 
+from vista_fc.runtime.retry import is_transient_oss_error, with_retry
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+
+_RETRY = with_retry(
+    max_attempts=3,
+    base_delay=0.2,
+    retriable=is_transient_oss_error,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +116,12 @@ class OssClient:
 
     def get_to_file(self, *, key: str, local_path: Path) -> None:
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        self._bucket.get_object_to_file(key, str(local_path))
+
+        @_RETRY
+        def _call() -> None:
+            self._bucket.get_object_to_file(key, str(local_path))
+
+        _call()
 
     def put_from_file(
         self,
@@ -115,23 +129,39 @@ class OssClient:
         key: str,
         local_path: Path,
         if_match_etag: str | None = None,
+        if_none_match: str | None = None,
     ) -> PutResult:
-        headers: dict[str, str] | None = None
+        headers: dict[str, str] = {}
         if if_match_etag is not None:
-            headers = {"If-Match": if_match_etag}
-        resp = self._bucket.put_object_from_file(
-            key,
-            str(local_path),
-            headers=headers,
-        )
-        return PutResult(etag=str(resp.etag))
+            headers["If-Match"] = if_match_etag
+        if if_none_match is not None:
+            headers["If-None-Match"] = if_none_match
+
+        @_RETRY
+        def _call() -> PutResult:
+            resp = self._bucket.put_object_from_file(
+                key,
+                str(local_path),
+                headers=headers or None,
+            )
+            return PutResult(etag=str(resp.etag))
+
+        return _call()
 
     def head(self, *, key: str) -> ObjectMeta:
-        h = self._bucket.head_object(key)
-        return ObjectMeta(etag=str(h.etag), size_bytes=int(h.content_length))
+        @_RETRY
+        def _call() -> ObjectMeta:
+            h = self._bucket.head_object(key)
+            return ObjectMeta(etag=str(h.etag), size_bytes=int(h.content_length))
+
+        return _call()
 
     def exists(self, *, key: str) -> bool:
-        return bool(self._bucket.object_exists(key))
+        @_RETRY
+        def _call() -> bool:
+            return bool(self._bucket.object_exists(key))
+
+        return _call()
 
 
 # ── S3-compatible backend (boto3) — used only when OSS_S3_COMPAT=true ────────
@@ -181,7 +211,21 @@ class _S3Backend:
         headers: dict[str, str] | None = None,
     ) -> _S3Resp:
         extra: dict[str, Any] = {}
-        if headers and "If-Match" in headers:
+        headers = headers or {}
+
+        # "*" means create-if-not-exists. Emulate via HEAD.
+        if headers.get("If-None-Match") == "*" and self.object_exists(key):
+            from botocore.exceptions import ClientError
+
+            raise ClientError(
+                {
+                    "Error": {"Code": "PreconditionFailed", "Message": "exists"},
+                    "ResponseMetadata": {"HTTPStatusCode": 412},
+                },
+                "PutObject",
+            )
+
+        if "If-Match" in headers:
             # boto3 lacks direct If-Match on upload; we do a HEAD precondition first.
             current = self.head_object(key)
             if current.etag != headers["If-Match"]:

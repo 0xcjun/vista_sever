@@ -79,6 +79,49 @@ def test_detect_happy_path(
     assert any(k.endswith("factors.duckdb") for k in push_keys)
 
 
+def test_detect_propagates_etag_for_duckdb_writeback(
+    workspace_mock: MagicMock,
+    tenant_research,
+    patched_vista_detect: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """Lost-Update prevention: the ETag returned from pull_to_tmp must be passed
+    as if_match_etag on the duckdb writeback so OSS rejects conflicting writers."""
+    db_local = tmp_path / "factors.duckdb"
+    db_local.write_bytes(b"x")
+    workspace_mock.pull_to_tmp.return_value = (db_local, '"etag-pull"')
+
+    mock_report = MagicMock()
+    mock_report.model_dump.return_value = {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "errored": 0,
+    }
+    patched_vista_detect.return_value = mock_report
+
+    workspace_mock.push_from_tmp.return_value = ArtifactRef(
+        kind="report_json",
+        oss_uri="oss://vista-fc-test/x.json",
+        size_bytes=1,
+        sha256=None,
+    )
+
+    factor_detect_service(
+        tenant=tenant_research,
+        payload=FactorDetectInput(
+            factors_db_uri="oss://vista-fc-test/user_data/u_abc/research/EXP_001/factors.duckdb",
+        ),
+        workspace=workspace_mock,
+    )
+
+    duckdb_calls = [c for c in workspace_mock.push_from_tmp.call_args_list if c.kwargs.get("kind") == "duckdb"]
+    assert len(duckdb_calls) == 1, "expected exactly one duckdb writeback"
+    assert (
+        duckdb_calls[0].kwargs.get("if_match_etag") == '"etag-pull"'
+    ), "duckdb writeback must carry pull ETag as If-Match to prevent Lost-Update"
+
+
 def test_detect_raises_on_vista_failure(
     workspace_mock: MagicMock,
     tenant_research,
