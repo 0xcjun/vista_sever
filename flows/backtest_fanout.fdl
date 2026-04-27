@@ -23,7 +23,7 @@ steps:
     steps:
       - type: task
         name: strategy_backtest
-        resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/strategy-backtest"
+        resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/strategy-backtest${vars.functionSuffix}"
         inputMappings:
           - target: tenant
             source: $.tenant

@@ -8,7 +8,8 @@
 
 set -euo pipefail
 
-REGISTRY_HOST="registry.cn-hangzhou.aliyuncs.com"
+IMAGE_REGISTRY="${IMAGE_REGISTRY:-registry.cn-hangzhou.aliyuncs.com/vista/vista-fc-base}"
+REGISTRY_HOST="${IMAGE_REGISTRY%%/*}"
 if [[ -n "${ACR_USER:-}" && -n "${ACR_PASS:-}" ]]; then
   echo "$ACR_PASS" | docker login "$REGISTRY_HOST" -u "$ACR_USER" --password-stdin
 fi

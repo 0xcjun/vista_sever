@@ -9,7 +9,7 @@ name: research-full
 steps:
   - type: flow
     name: run_pipeline
-    flowName: research-pipeline${env.FC_SUFFIX|""}
+    flowName: research-pipeline${vars.functionSuffix}
 
   - type: succeed
     name: done

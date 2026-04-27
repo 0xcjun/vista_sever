@@ -64,7 +64,7 @@ name: research-pipeline
 steps:
   - type: task
     name: factor_plan
-    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-plan"
+    resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/factor-plan${vars.functionSuffix}"
     pattern: waitForCallback=false
     inputMappings:
       - target: tenant
@@ -94,7 +94,7 @@ steps:
 
   - type: task
     name: factor_builder
-    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-builder"
+    resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/factor-builder${vars.functionSuffix}"
     inputMappings:
       - target: tenant
         source: $.tenant
@@ -129,7 +129,7 @@ steps:
 
   - type: task
     name: factor_detect
-    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-detect"
+    resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/factor-detect${vars.functionSuffix}"
     inputMappings:
       - target: tenant
         source: $.tenant
@@ -157,7 +157,7 @@ steps:
 
   - type: task
     name: factor_duplicate
-    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-duplicate"
+    resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/factor-duplicate${vars.functionSuffix}"
     inputMappings:
       - target: tenant
         source: $.tenant
@@ -189,7 +189,7 @@ steps:
 
   - type: task
     name: factor_evaluate
-    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-evaluate"
+    resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/factor-evaluate${vars.functionSuffix}"
     inputMappings:
       - target: tenant
         source: $.tenant
@@ -222,7 +222,7 @@ steps:
 
   - type: task
     name: factor_filter
-    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/factor-filter"
+    resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/factor-filter${vars.functionSuffix}"
     inputMappings:
       - target: tenant
         source: $.tenant
@@ -265,7 +265,7 @@ steps:
     steps:
       - type: task
         name: strategy_backtest
-        resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/strategy-backtest"
+        resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/strategy-backtest${vars.functionSuffix}"
         inputMappings:
           - target: tenant
             source: $.tenant
@@ -306,7 +306,7 @@ steps:
   # it by run_id without trawling SLS logs, then transitions to abort.
   - type: task
     name: deadletter_trap
-    resourceArn: "acs:fc:${context.region}:${context.accountId}:functions/deadletter"
+    resourceArn: "acs:fc:${vars.region}:${vars.accountId}:functions/deadletter${vars.functionSuffix}"
     inputMappings:
       - target: tenant
         source: $.tenant

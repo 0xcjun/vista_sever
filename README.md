@@ -25,6 +25,7 @@ scripts/docker_run.sh factor_detect tests/fixtures/events/factor_detect_min.json
 ## 文档
 
 - **完整指南**：[docs/GUIDE.md](docs/GUIDE.md) — 怎么测、怎么调、怎么上生产，三件事一份文档
+- **首次上线清单**：[docs/DEPLOY-CHECKLIST.md](docs/DEPLOY-CHECKLIST.md) — 第一次部 prod 用，阿里云控制台逐步操作
 
 ## 函数
 

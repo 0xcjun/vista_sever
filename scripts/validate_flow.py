@@ -46,7 +46,8 @@ def _fc_functions(s_yaml: dict[str, Any]) -> set[str]:
             continue
         if res.get("component") != "fc3":
             continue
-        fn = res.get("props", {}).get("function", {}).get("functionName", "")
+        props = res.get("props", {})
+        fn = props.get("functionName") or props.get("function", {}).get("functionName", "")
         base = _strip_vars(str(fn))
         if base:
             names.add(base)
@@ -64,6 +65,13 @@ def _flow_names(s_yaml: dict[str, Any]) -> set[str]:
         base = _strip_vars(str(fn))
         if base:
             names.add(base)
+    for path in FLOWS_DIR.glob("*.fdl"):
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            continue
+        if isinstance(doc, dict) and doc.get("type") == "flow" and doc.get("name"):
+            names.add(str(doc["name"]))
     return names
 
 

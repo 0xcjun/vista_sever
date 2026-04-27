@@ -1,9 +1,10 @@
-# syntax=docker/dockerfile:1.7
-
 # ============================================================================
 # Stage 1: builder — install python deps into /app/.venv using uv
 # ============================================================================
-FROM python:3.12-slim-bookworm AS builder
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:latest
+FROM ${UV_IMAGE} AS uv-bin
+FROM ${PYTHON_IMAGE} AS builder
 
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
@@ -19,7 +20,7 @@ RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://secur
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=uv-bin /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
@@ -64,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ============================================================================
 # Stage 2: runtime — minimal image containing python + .venv
 # ============================================================================
-FROM python:3.12-slim-bookworm AS runtime
+FROM ${PYTHON_IMAGE} AS runtime
 
 RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true \
     && sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://security.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true \
