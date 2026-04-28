@@ -79,22 +79,40 @@ class OssClient:
         self.bucket_name = bucket_name
 
     @classmethod
-    def from_env(cls) -> OssClient:
+    def from_env(
+        cls,
+        *,
+        access_key_id: str | None = None,
+        access_key_secret: str | None = None,
+        security_token: str | None = None,
+    ) -> OssClient:
         if _use_s3_compat():
             return cls._from_env_s3_compat()
-        return cls._from_env_oss2()
+        return cls._from_env_oss2(
+            access_key_id=access_key_id,
+            access_key_secret=access_key_secret,
+            security_token=security_token,
+        )
 
     @classmethod
-    def _from_env_oss2(cls) -> OssClient:
+    def _from_env_oss2(
+        cls,
+        *,
+        access_key_id: str | None = None,
+        access_key_secret: str | None = None,
+        security_token: str | None = None,
+    ) -> OssClient:
         region = os.environ.get("OSS_REGION", "cn-hangzhou")
         bucket_name = os.environ["OSS_BUCKET"]
-        ak = os.environ["OSS_ACCESS_KEY_ID"]
-        sk = os.environ["OSS_ACCESS_KEY_SECRET"]
         endpoint = os.environ.get(
             "OSS_ENDPOINT",
             f"https://oss-{region}-internal.aliyuncs.com",
         )
-        auth = oss2.Auth(ak, sk)
+        auth = _oss_auth_from_env_or_role(
+            access_key_id=access_key_id,
+            access_key_secret=access_key_secret,
+            security_token=security_token,
+        )
         bucket = oss2.Bucket(auth, endpoint, bucket_name)
         return cls(bucket, bucket_name=bucket_name)
 
@@ -176,6 +194,31 @@ class _S3Resp:
 class _S3Head:
     etag: str
     content_length: int
+
+
+def _oss_auth_from_env_or_role(
+    *,
+    access_key_id: str | None = None,
+    access_key_secret: str | None = None,
+    security_token: str | None = None,
+) -> Any:
+    ak = access_key_id or os.environ.get("OSS_ACCESS_KEY_ID") or os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_ID")
+    sk = (
+        access_key_secret
+        or os.environ.get("OSS_ACCESS_KEY_SECRET")
+        or os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET")
+    )
+    token = security_token or os.environ.get("OSS_SECURITY_TOKEN") or os.environ.get("ALIBABA_CLOUD_SECURITY_TOKEN")
+    if ak and sk:
+        if token:
+            return oss2.StsAuth(ak, sk, token)
+        return oss2.Auth(ak, sk)
+
+    raise RuntimeError(
+        "OSS credentials are not configured. For FC custom containers, pass x-fc-access-key-id, "
+        "x-fc-access-key-secret, and x-fc-security-token from the invoke request context; "
+        "for local runs, set OSS_ACCESS_KEY_ID and OSS_ACCESS_KEY_SECRET."
+    )
 
 
 class _S3Backend:

@@ -14,6 +14,18 @@ def _mk_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OSS_ENDPOINT", "http://localhost:9000")
 
 
+def _mk_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OSS_REGION", "cn-hangzhou")
+    monkeypatch.setenv("OSS_BUCKET", "bucket-x")
+    monkeypatch.setenv("OSS_ENDPOINT", "http://localhost:9000")
+    monkeypatch.delenv("OSS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("OSS_ACCESS_KEY_SECRET", raising=False)
+    monkeypatch.delenv("OSS_SECURITY_TOKEN", raising=False)
+    monkeypatch.delenv("ALIBABA_CLOUD_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("ALIBABA_CLOUD_ACCESS_KEY_SECRET", raising=False)
+    monkeypatch.delenv("ALIBABA_CLOUD_SECURITY_TOKEN", raising=False)
+
+
 @patch("vista_fc.storage.oss_client.oss2")
 def test_ossclient_reads_config_from_env(mock_oss2: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     _mk_env(monkeypatch)
@@ -31,6 +43,53 @@ def test_ossclient_reads_config_from_env(mock_oss2: MagicMock, monkeypatch: pyte
     assert args.args[0] == "auth"
     assert args.args[1] == "http://localhost:9000"
     assert args.args[2] == "bucket-x"
+
+
+@patch("vista_fc.storage.oss_client.oss2")
+def test_ossclient_uses_fc_request_credentials(mock_oss2: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    _mk_role_env(monkeypatch)
+    mock_bucket = MagicMock()
+    mock_oss2.StsAuth.return_value = "fc-sts-auth"
+    mock_oss2.Bucket.return_value = mock_bucket
+
+    from vista_fc.storage.oss_client import OssClient
+
+    c = OssClient.from_env(access_key_id="fc-ak", access_key_secret="fc-sk", security_token="fc-token")
+    assert c.bucket_name == "bucket-x"
+
+    mock_oss2.StsAuth.assert_called_once_with("fc-ak", "fc-sk", "fc-token")
+    args = mock_oss2.Bucket.call_args
+    assert args.args[0] == "fc-sts-auth"
+    assert args.args[1] == "http://localhost:9000"
+    assert args.args[2] == "bucket-x"
+
+
+@patch("vista_fc.storage.oss_client.oss2")
+def test_ossclient_does_not_initialize_default_credentials_chain_with_fc_request_credentials(
+    mock_oss2: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mk_role_env(monkeypatch)
+
+    from vista_fc.storage.oss_client import OssClient
+
+    OssClient.from_env(access_key_id="fc-ak", access_key_secret="fc-sk", security_token="fc-token")
+
+    mock_oss2.StsAuth.assert_called_once_with("fc-ak", "fc-sk", "fc-token")
+
+
+@patch("vista_fc.storage.oss_client.oss2")
+def test_ossclient_uses_sts_auth_when_security_token_is_set(
+    mock_oss2: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mk_env(monkeypatch)
+    monkeypatch.setenv("OSS_SECURITY_TOKEN", "token")
+    mock_oss2.StsAuth.return_value = "sts-auth"
+
+    from vista_fc.storage.oss_client import OssClient
+
+    OssClient.from_env()
+
+    mock_oss2.StsAuth.assert_called_once_with("ak", "sk", "token")
 
 
 @patch("vista_fc.storage.oss_client.oss2")

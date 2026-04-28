@@ -31,6 +31,12 @@ def _mk_event(payload: dict) -> dict:
     return {"tenant": _tenant_dict(), "payload": payload}
 
 
+class _Context:
+    access_key_id = "fc-ak"
+    access_key_secret = "fc-sk"  # pragma: allowlist secret
+    security_token = "fc-token"
+
+
 @patch("handlers._base.WorkspaceStorage")
 @patch("handlers._base.OssClient")
 def test_success_envelope(mock_oss_cls: MagicMock, mock_ws_cls: MagicMock) -> None:
@@ -51,6 +57,31 @@ def test_success_envelope(mock_oss_cls: MagicMock, mock_ws_cls: MagicMock) -> No
     assert result["status"] == "succeeded"
     assert result["payload"]["echo"] == "world"
     assert result["error"] is None
+
+
+@patch("handlers._base.WorkspaceStorage")
+@patch("handlers._base.OssClient")
+def test_build_workspace_passes_fc_context_credentials(mock_oss_cls: MagicMock, mock_ws_cls: MagicMock) -> None:
+    mock_oss_cls.from_env.return_value = MagicMock()
+    mock_ws_cls.return_value = MagicMock()
+
+    def service(*, tenant, payload, workspace) -> _Out:  # noqa: ARG001
+        return _Out(echo=payload.hello)
+
+    run_handler(
+        event=_mk_event({"hello": "world"}),
+        context=_Context(),
+        input_cls=_In,
+        output_cls=_Out,
+        service=service,
+        function_name="test-fn",
+    )
+
+    mock_oss_cls.from_env.assert_called_once_with(
+        access_key_id="fc-ak",
+        access_key_secret="fc-sk",  # pragma: allowlist secret
+        security_token="fc-token",
+    )
 
 
 @patch("handlers._base.WorkspaceStorage")

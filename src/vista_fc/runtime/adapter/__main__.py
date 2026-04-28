@@ -63,6 +63,9 @@ class _InvokeHandler(BaseHTTPRequestHandler):
         context = _FcContext(
             request_id=self.headers.get("x-fc-request-id", ""),
             function_name=self.headers.get("x-fc-function-name", ""),
+            access_key_id=self.headers.get("x-fc-access-key-id", ""),
+            access_key_secret=self.headers.get("x-fc-access-key-secret", ""),
+            security_token=self.headers.get("x-fc-security-token", ""),
         )
 
         try:
@@ -82,11 +85,21 @@ class _InvokeHandler(BaseHTTPRequestHandler):
 
 
 class _FcContext:
-    __slots__ = ("request_id", "function_name")
+    __slots__ = ("request_id", "function_name", "access_key_id", "access_key_secret", "security_token")
 
-    def __init__(self, request_id: str, function_name: str) -> None:
+    def __init__(
+        self,
+        request_id: str,
+        function_name: str,
+        access_key_id: str,
+        access_key_secret: str,
+        security_token: str,
+    ) -> None:
         self.request_id = request_id
         self.function_name = function_name
+        self.access_key_id = access_key_id
+        self.access_key_secret = access_key_secret
+        self.security_token = security_token
 
 
 def serve(spec: str, port: int = 9000) -> None:

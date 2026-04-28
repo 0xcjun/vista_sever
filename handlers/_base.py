@@ -51,8 +51,12 @@ def _ensure_logging() -> None:
         _LOG_CONFIGURED = True
 
 
-def _build_workspace(tenant: TenantContext) -> WorkspaceStorage:
-    oss = OssClient.from_env()
+def _build_workspace(tenant: TenantContext, context: Any) -> WorkspaceStorage:
+    oss = OssClient.from_env(
+        access_key_id=getattr(context, "access_key_id", None),
+        access_key_secret=getattr(context, "access_key_secret", None),
+        security_token=getattr(context, "security_token", None),
+    )
     tmp_root = Path(os.environ.get("VISTA_FC_TMP_ROOT", tempfile.gettempdir()))
     return WorkspaceStorage(oss=oss, tenant=tenant, tmp_root=tmp_root)
 
@@ -120,7 +124,7 @@ def run_handler[P: BaseModel, R: BaseModel](
         return out.model_dump(mode="json")
 
     tenant = envelope.tenant
-    workspace = _build_workspace(tenant)
+    workspace = _build_workspace(tenant, context)
 
     # Idempotency: on replay with the same (function_name, user_hash, run_id),
     # return the previously stored envelope instead of re-running the service.

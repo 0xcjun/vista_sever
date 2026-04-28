@@ -7,7 +7,7 @@
     "requested_at": "2026-04-22T10:00:00Z"
   },
   "payload": {
-    "routes_toml_uri": "oss://vista-fc-dev/user_data/u_local_dev/research/EXP_LOCAL/factor_routes.toml",
+    "routes_toml_uri": "oss://vista-fc-preflight/user_data/u_local_dev/research/EXP_LOCAL/factor_routes.toml",
     "builder_type": "agno_agent",
     "factor_numbers": 2,
     "batch_size": 2,

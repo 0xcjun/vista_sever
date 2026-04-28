@@ -89,7 +89,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.factor_plan:handler"]
+        command: ["handlers.factor_plan:handler"]
 
   factor-builder:
     component: fc3
@@ -109,7 +109,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.factor_builder:handler"]
+        command: ["handlers.factor_builder:handler"]
 
   factor-detect:
     component: fc3
@@ -129,7 +129,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.factor_detect:handler"]
+        command: ["handlers.factor_detect:handler"]
 
   factor-duplicate:
     component: fc3
@@ -149,7 +149,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.factor_duplicate:handler"]
+        command: ["handlers.factor_duplicate:handler"]
 
   factor-evaluate:
     component: fc3
@@ -169,7 +169,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.factor_evaluate:handler"]
+        command: ["handlers.factor_evaluate:handler"]
 
   factor-filter:
     component: fc3
@@ -189,7 +189,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.factor_filter:handler"]
+        command: ["handlers.factor_filter:handler"]
 
   strategy-backtest:
     component: fc3
@@ -209,7 +209,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.strategy_backtest:handler"]
+        command: ["handlers.strategy_backtest:handler"]
 
   deadletter:
     component: fc3
@@ -229,7 +229,7 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.deadletter:handler"]
+        command: ["handlers.deadletter:handler"]
 
   # 无触发器，调用方走 fc3 InvokeFunction SDK / 函数 URL 直调。
   # 想要 cron @every 1m 自动 tick，单独 deploy s.realtime-cron.yaml（独立函数 vista-realtime-cron）。
@@ -251,4 +251,4 @@ resources:
         <<: *common-env
       customContainerConfig:
         <<: *common-container
-        args: ["handlers.vista_realtime:handler"]
+        command: ["handlers.vista_realtime:handler"]

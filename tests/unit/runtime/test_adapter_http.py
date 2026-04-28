@@ -44,6 +44,16 @@ def _echo_handler(event: dict[str, Any], context: object) -> dict[str, Any]:  # 
     return {"status": "succeeded", "echo": event}
 
 
+def _context_handler(event: dict[str, Any], context: object) -> dict[str, Any]:  # noqa: ARG001
+    return {
+        "status": "succeeded",
+        "request_id": getattr(context, "request_id", ""),
+        "access_key_id": getattr(context, "access_key_id", ""),
+        "access_key_secret": getattr(context, "access_key_secret", ""),
+        "security_token": getattr(context, "security_token", ""),
+    }
+
+
 def _bad_handler(event: dict[str, Any], context: object) -> dict[str, Any]:  # noqa: ARG001
     raise RuntimeError("boom")
 
@@ -67,6 +77,36 @@ def test_invoke_routes_to_handler() -> None:
         body = json.loads(resp.read())
     assert body["status"] == "succeeded"
     assert body["echo"] == payload
+
+
+def test_invoke_passes_fc_credentials_headers_to_context() -> None:
+    mod = types.ModuleType("_fake_context_http_adapter_test")
+    mod.handler = _context_handler  # type: ignore[attr-defined]
+    sys.modules["_fake_context_http_adapter_test"] = mod
+
+    port = _free_port()
+    _start_server("_fake_context_http_adapter_test:handler", port)
+
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/invoke",
+        data=b"{}",
+        headers={
+            "Content-Type": "application/json",
+            "x-fc-request-id": "req-1",
+            "x-fc-access-key-id": "fc-ak",
+            "x-fc-access-key-secret": "fc-sk",  # pragma: allowlist secret
+            "x-fc-security-token": "fc-token",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=2.0) as resp:
+        body = json.loads(resp.read())
+    assert body == {
+        "status": "succeeded",
+        "request_id": "req-1",
+        "access_key_id": "fc-ak",
+        "access_key_secret": "fc-sk",  # pragma: allowlist secret
+        "security_token": "fc-token",
+    }
 
 
 def test_invoke_handler_exception_returns_500() -> None:
