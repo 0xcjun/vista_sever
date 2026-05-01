@@ -86,3 +86,43 @@ def test_route_code_only_not_implemented(
             payload=FactorBuilderInput(route_code="R001"),
             workspace=workspace_mock,
         )
+
+
+def test_build_passes_explicit_llm_params(
+    workspace_mock: MagicMock,
+    tenant_research,
+    patched_builder: MagicMock,
+    patched_load_toml: MagicMock,
+    patched_factor_route: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """显式 anthropic_* 应透传给 vista.factor_build,SecretStr 必须取明文。"""
+    toml_local = tmp_path / "factor_routes.toml"
+    toml_local.write_text('[[routes]]\ncode = "R"\n')
+    workspace_mock.pull_to_tmp.return_value = (toml_local, '"e"')
+    patched_load_toml.return_value = [{"code": "R", "name": "x", "compute_engine": "czsc"}]
+
+    fake_route = MagicMock()
+    fake_route.code = "R"
+    patched_factor_route.model_validate.return_value = fake_route
+    patched_builder.return_value = []
+
+    workspace_mock.push_from_tmp.return_value = ArtifactRef(
+        kind="duckdb", oss_uri="oss://b/x.duckdb", size_bytes=1, sha256="a"
+    )
+
+    factor_builder_service(
+        tenant=tenant_research,
+        payload=FactorBuilderInput(
+            routes_toml_uri="oss://b/r.toml",
+            anthropic_api_key="sk-explicit",  # pragma: allowlist secret
+            anthropic_base_url="https://gateway.example/v1",
+            anthropic_model="explicit-model",
+        ),
+        workspace=workspace_mock,
+    )
+
+    kw = patched_builder.call_args.kwargs
+    assert kw["anthropic_api_key"] == "sk-explicit"  # pragma: allowlist secret
+    assert kw["anthropic_base_url"] == "https://gateway.example/v1"
+    assert kw["anthropic_model"] == "explicit-model"

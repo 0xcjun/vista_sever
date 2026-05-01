@@ -2426,8 +2426,8 @@ wheels = [
 
 [[package]]
 name = "vista"
-version = "3.2.2.post260426"
-source = { registry = "https://pypi.zbczsc.com/team/dev/+simple/" }
+version = "3.2.3.post260428"
+source = { editable = "../../cursorPro/vista" }
 dependencies = [
     { name = "agno", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "anthropic", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -2450,8 +2450,60 @@ dependencies = [
     { name = "typer", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "wbt", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
-wheels = [
-    { url = "https://pypi.zbczsc.com/team/dev/+f/ba7/b844fd9ca7110/vista-3.2.2.post260426-py3-none-any.whl", hash = "sha256:ba7b844fd9ca711059d6801d9f50677fa671688c149c3098952a38790b902d19" },
+
+[package.metadata]
+requires-dist = [
+    { name = "agno", specifier = ">=2.5.17" },
+    { name = "anthropic", specifier = ">=0.96.0" },
+    { name = "chan-factor-rs", index = "https://pypi.zbczsc.com/team/dev/+simple/" },
+    { name = "chan-factor-rs", specifier = ">=0.4.1", index = "https://pypi.zbczsc.com/team/dev/+simple/" },
+    { name = "chanfactor", specifier = ">=0.1.6", index = "https://pypi.zbczsc.com/team/dev/+simple/" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.48" },
+    { name = "clickhouse-connect", specifier = ">=0.6.0" },
+    { name = "czsc", specifier = ">=0.9.68" },
+    { name = "duckdb", specifier = ">=0.9.0" },
+    { name = "faiss-cpu", specifier = ">=1.13.0" },
+    { name = "joblib", specifier = ">=1.5.2" },
+    { name = "json-repair", specifier = ">=0.59.4" },
+    { name = "loguru", specifier = ">=0.7.0" },
+    { name = "polars", specifier = ">=1.0.0" },
+    { name = "psutil", specifier = ">=7.1.3" },
+    { name = "pydantic", specifier = ">=2.6.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "tomlkit", specifier = ">=0.13.0" },
+    { name = "typer", specifier = ">=0.9" },
+    { name = "wbt", specifier = ">=0.1.3" },
+]
+
+[package.metadata.requires-dev]
+agents = [
+    { name = "agno", specifier = ">=2.1.3" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.18,<0.1.49" },
+]
+dev = [
+    { name = "basedpyright", specifier = ">=1.28.1" },
+    { name = "ipython", specifier = ">=9.4.0" },
+    { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "pandas-stubs", specifier = ">=2.3.0.250703" },
+    { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "pytest-benchmark", specifier = ">=5.2.3" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "reportlab", specifier = ">=4.4.7" },
+    { name = "ruff", specifier = ">=0.11.0" },
+]
+ensemble = [
+    { name = "autogluon", specifier = ">=1.5.0" },
+    { name = "pyqlib", specifier = ">=0.9.7" },
+]
+optimization = [
+    { name = "cvxpy", extras = ["complete"], specifier = ">=1.7.3" },
+    { name = "ecos", specifier = ">=2.0.14" },
+    { name = "mosek", specifier = ">=11.0.29" },
+    { name = "osqp", specifier = ">=1.0.5" },
+    { name = "scs", specifier = ">=3.2.9" },
 ]
 
 [[package]]
@@ -2508,7 +2560,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.6.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "tomlkit", specifier = ">=0.13.0" },
-    { name = "vista", specifier = ">=3.2.0", index = "https://pypi.zbczsc.com/team/dev/+simple/" },
+    { name = "vista", editable = "../../cursorPro/vista" },
     { name = "wbt", specifier = ">=0.1.6" },
 ]
 

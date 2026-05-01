@@ -3,6 +3,47 @@
   dict({
     'additionalProperties': False,
     'properties': dict({
+      'anthropic_api_key': dict({
+        'anyOf': list([
+          dict({
+            'format': 'password',
+            'type': 'string',
+            'writeOnly': True,
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': '显式 Anthropic API Key',
+        'title': 'Anthropic Api Key',
+      }),
+      'anthropic_base_url': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': '显式 Anthropic Base URL',
+        'title': 'Anthropic Base Url',
+      }),
+      'anthropic_model': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': '显式 Anthropic 模型名',
+        'title': 'Anthropic Model',
+      }),
       'batch_size': dict({
         'default': 5,
         'maximum': 100,
@@ -40,18 +81,6 @@
         'minimum': 1,
         'title': 'Max Workers',
         'type': 'integer',
-      }),
-      'model': dict({
-        'anyOf': list([
-          dict({
-            'type': 'string',
-          }),
-          dict({
-            'type': 'null',
-          }),
-        ]),
-        'default': None,
-        'title': 'Model',
       }),
       'multi_turn': dict({
         'default': False,
@@ -876,12 +905,22 @@
   dict({
     'additionalProperties': False,
     'properties': dict({
-      'interactive': dict({
-        'default': False,
-        'title': 'Interactive',
-        'type': 'boolean',
+      'anthropic_api_key': dict({
+        'anyOf': list([
+          dict({
+            'format': 'password',
+            'type': 'string',
+            'writeOnly': True,
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': '显式 Anthropic API Key',
+        'title': 'Anthropic Api Key',
       }),
-      'model': dict({
+      'anthropic_base_url': dict({
         'anyOf': list([
           dict({
             'type': 'string',
@@ -891,7 +930,26 @@
           }),
         ]),
         'default': None,
-        'title': 'Model',
+        'description': '显式 Anthropic Base URL',
+        'title': 'Anthropic Base Url',
+      }),
+      'anthropic_model': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': '显式 Anthropic 模型名',
+        'title': 'Anthropic Model',
+      }),
+      'interactive': dict({
+        'default': False,
+        'title': 'Interactive',
+        'type': 'boolean',
       }),
       'skill_path': dict({
         'anyOf': list([

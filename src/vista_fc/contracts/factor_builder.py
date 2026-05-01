@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from vista_fc.contracts.common import ArtifactRef
 
@@ -27,8 +27,13 @@ class FactorBuilderInput(BaseModel):
     batch_size: int = Field(default=5, ge=1, le=100)
     max_workers: int = Field(default=1, ge=1, le=32)
     multi_turn: bool = False
-    model: str | None = None
     max_retries: int = Field(default=3, ge=0, le=20)
+
+    # LLM 显式参数（每个调用可独立传入,优先级高于函数环境变量）。
+    # SecretStr 防止 repr / model_dump_json / 日志打印时泄漏。
+    anthropic_api_key: SecretStr | None = Field(default=None, description="显式 Anthropic API Key")
+    anthropic_base_url: str | None = Field(default=None, description="显式 Anthropic Base URL")
+    anthropic_model: str | None = Field(default=None, description="显式 Anthropic 模型名")
 
     @model_validator(mode="after")
     def _require_source(self) -> FactorBuilderInput:

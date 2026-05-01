@@ -8,7 +8,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     # 业务核心 — 从私有源 zbczsc-dev 安装（见 [tool.uv.sources]）
     # 私有传递依赖显式列出，以便 uv sources 路由生效（uv sources 仅作用于直接依赖）
-    "vista>=3.2.0",
+    "vista>=3.2.3",
     "chan-factor-rs>=0.4.1",
     "chanfactor>=0.1.6",
     "wbt>=0.1.6",
@@ -76,7 +76,8 @@ explicit = true
 
 [tool.uv.sources]
 # vista 及其私有传递依赖从 zbczsc-dev 私有源解析（该源开放、无需认证）。
-vista = { index = "zbczsc-dev" }
+# TODO: vista 3.2.3 publish 到 zbczsc-dev 后,把下面 path 改回 { index = "zbczsc-dev" }
+vista = { path = "../../cursorPro/vista", editable = true }
 chanfactor = { index = "zbczsc-dev" }
 chan-factor-rs = { index = "zbczsc-dev" }
 

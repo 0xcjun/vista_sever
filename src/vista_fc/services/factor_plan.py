@@ -24,10 +24,12 @@ def factor_plan_service(
     workspace: WorkspaceStorage,
 ) -> FactorPlanOutput:
     agent = FactorPlanAgent(
-        model=payload.model,
         skill_path=payload.skill_path or ".claude/skills/vista-factor-planning",
         interactive=payload.interactive,
         verbose=False,
+        anthropic_api_key=(payload.anthropic_api_key.get_secret_value() if payload.anthropic_api_key else None),
+        anthropic_base_url=payload.anthropic_base_url,
+        anthropic_model=payload.anthropic_model,
     )
     # anyio.run is backend-agnostic (asyncio/trio) and — unlike asyncio.run —
     # keeps us compatible with a future async handler migration without changing

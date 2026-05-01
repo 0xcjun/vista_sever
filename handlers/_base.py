@@ -71,10 +71,23 @@ def _placeholder_tenant() -> TenantContext:
     )
 
 
+_SENSITIVE_METRIC_KEYS = frozenset(
+    {
+        "anthropic_api_key",
+        "anthropic_base_url",
+        "anthropic_model",
+    }
+)
+
+
 def _extract_metrics(payload: BaseModel) -> dict[str, float | int | str]:
     m: dict[str, float | int | str] = {}
-    data = payload.model_dump()
+    # mode="json" 让 SecretStr 序列化为 "**********",同时 _SENSITIVE_METRIC_KEYS 兜底
+    # 排除掉 LLM 凭据/网关/模型这些不该出现在指标流的字段。
+    data = payload.model_dump(mode="json")
     for k, v in data.items():
+        if k in _SENSITIVE_METRIC_KEYS:
+            continue
         if isinstance(v, int | float | str) and not k.endswith("_artifact"):
             m[k] = v
     return m

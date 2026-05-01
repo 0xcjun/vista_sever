@@ -7,7 +7,7 @@ Output carries a list of FactorRouteSummary + the persisted TOML artifact.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from vista_fc.contracts.common import ArtifactRef
 
@@ -17,8 +17,13 @@ class FactorPlanInput(BaseModel):
 
     user_input: str = Field(min_length=1, description="交易想法 / 市场现象自由文本")
     interactive: bool = False
-    model: str | None = None
     skill_path: str | None = None
+
+    # LLM 显式参数（每个调用可独立传入,优先级高于函数环境变量）。
+    # SecretStr 防止 repr / model_dump_json / 日志打印时泄漏。
+    anthropic_api_key: SecretStr | None = Field(default=None, description="显式 Anthropic API Key")
+    anthropic_base_url: str | None = Field(default=None, description="显式 Anthropic Base URL")
+    anthropic_model: str | None = Field(default=None, description="显式 Anthropic 模型名")
 
 
 class FactorRouteSummary(BaseModel):

@@ -63,3 +63,93 @@ def test_plan_happy_path(
     assert out.routes_toml_artifact.kind == "toml"
 
     patched_agent.save_toml.assert_called_once()
+
+
+def test_plan_passes_explicit_llm_params(
+    workspace_mock: MagicMock,
+    tenant_research,
+    tmp_path: Path,
+) -> None:
+    """payload 里的显式 anthropic_* 应原样透传给 FactorPlanAgent 构造函数,
+    其中 SecretStr 必须 .get_secret_value() 后再传(明文给 vista)。"""
+    route = MagicMock()
+    route.code = "R001"
+    route.name = "x"
+    route.compute_engine.value = "T"
+    route.description = ""
+    mock_result = MagicMock()
+    mock_result.routes = [route]
+
+    async def _fake_plan(_):
+        return mock_result
+
+    def _save_toml(_res, path):
+        Path(path).write_text('[[routes]]\ncode = "R001"\n', encoding="utf-8")
+
+    workspace_mock.push_from_tmp.return_value = ArtifactRef(
+        kind="toml",
+        oss_uri="oss://b/x.toml",
+        size_bytes=1,
+        sha256="a",
+    )
+
+    with patch("vista_fc.services.factor_plan.FactorPlanAgent") as MockAgent:
+        instance = MockAgent.return_value
+        instance.plan.side_effect = _fake_plan
+        instance.save_toml.side_effect = _save_toml
+
+        factor_plan_service(
+            tenant=tenant_research,
+            payload=FactorPlanInput(
+                user_input="X",
+                anthropic_api_key="sk-explicit",  # pragma: allowlist secret
+                anthropic_base_url="https://gateway.example/v1",
+                anthropic_model="explicit-model",
+            ),
+            workspace=workspace_mock,
+        )
+
+        kw = MockAgent.call_args.kwargs
+        assert kw["anthropic_api_key"] == "sk-explicit"  # pragma: allowlist secret
+        assert kw["anthropic_base_url"] == "https://gateway.example/v1"
+        assert kw["anthropic_model"] == "explicit-model"
+
+
+def test_plan_defaults_to_none_when_unset(
+    workspace_mock: MagicMock,
+    tenant_research,
+    tmp_path: Path,
+) -> None:
+    """payload 不传显式参数时,service 应该把 None 透传,让 vista 自己回退 env。"""
+    route = MagicMock()
+    route.code = "R"
+    route.name = "x"
+    route.compute_engine.value = "T"
+    route.description = ""
+    mock_result = MagicMock()
+    mock_result.routes = [route]
+
+    async def _fake_plan(_):
+        return mock_result
+
+    def _save_toml(_res, path):
+        Path(path).write_text('[[routes]]\ncode = "R"\n', encoding="utf-8")
+
+    workspace_mock.push_from_tmp.return_value = ArtifactRef(
+        kind="toml", oss_uri="oss://b/x.toml", size_bytes=1, sha256="a"
+    )
+
+    with patch("vista_fc.services.factor_plan.FactorPlanAgent") as MockAgent:
+        instance = MockAgent.return_value
+        instance.plan.side_effect = _fake_plan
+        instance.save_toml.side_effect = _save_toml
+
+        factor_plan_service(
+            tenant=tenant_research,
+            payload=FactorPlanInput(user_input="X"),
+            workspace=workspace_mock,
+        )
+        kw = MockAgent.call_args.kwargs
+        assert kw["anthropic_api_key"] is None
+        assert kw["anthropic_base_url"] is None
+        assert kw["anthropic_model"] is None

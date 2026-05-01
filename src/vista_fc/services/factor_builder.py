@@ -49,6 +49,7 @@ def factor_builder_service(
 
     total = 0
     per_route: list[RouteBuildStat] = []
+    api_key = payload.anthropic_api_key.get_secret_value() if payload.anthropic_api_key else None
     for route in routes:
         factors = _factor_build(
             route=route,
@@ -58,9 +59,11 @@ def factor_builder_service(
             batch_size=payload.batch_size,
             max_workers=payload.max_workers,
             multi_turn=payload.multi_turn,
-            model=payload.model,
             max_retries=payload.max_retries,
             verbose=False,
+            anthropic_api_key=api_key,
+            anthropic_base_url=payload.anthropic_base_url,
+            anthropic_model=payload.anthropic_model,
         )
         per_route.append(
             RouteBuildStat(
