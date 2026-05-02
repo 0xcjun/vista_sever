@@ -20,14 +20,18 @@ import datetime as _dt
 import os
 import tempfile
 import time
+import types
+import typing
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from vista_fc.contracts.common import ArtifactRef, EnvelopeOut, TenantContext
 from vista_fc.runtime.context import parse_envelope_in
+from vista_fc.runtime.crypto import PREFIX as _ENC_PREFIX
+from vista_fc.runtime.crypto import decrypt_field
 from vista_fc.runtime.errors import classify
 from vista_fc.runtime.idempotency import IdempotencyStore, tombstone_key
 from vista_fc.runtime.idempotency import is_enabled as idempotency_enabled
@@ -69,6 +73,37 @@ def _placeholder_tenant() -> TenantContext:
         run_id="unknown",
         requested_at=_dt.datetime.now(_dt.UTC),
     )
+
+
+def _annotation_accepts_secret_str(ann: Any) -> bool:
+    if ann is SecretStr:
+        return True
+    origin = typing.get_origin(ann)
+    if origin in (typing.Union, types.UnionType):
+        return any(arg is SecretStr for arg in typing.get_args(ann))
+    return False
+
+
+def _decrypt_secret_fields(payload: BaseModel) -> BaseModel:
+    """Walk top-level SecretStr fields; decrypt any value carrying the enc:v1: envelope.
+
+    Plaintext values pass through. Returns a (possibly new) payload instance with
+    decrypted SecretStr values. Decryption errors raise FcError(INPUT_VALIDATION).
+    """
+    updates: dict[str, SecretStr] = {}
+    for name, field_info in type(payload).model_fields.items():
+        if not _annotation_accepts_secret_str(field_info.annotation):
+            continue
+        val = getattr(payload, name, None)
+        if not isinstance(val, SecretStr):
+            continue
+        raw = val.get_secret_value()
+        if not raw.startswith(_ENC_PREFIX):
+            continue
+        updates[name] = SecretStr(decrypt_field(raw))
+    if not updates:
+        return payload
+    return payload.model_copy(update=updates)
 
 
 _SENSITIVE_METRIC_KEYS = frozenset(
@@ -119,9 +154,14 @@ def run_handler[P: BaseModel, R: BaseModel](
 
     from loguru import logger
 
-    # 1. parse envelope; on ValidationError short-circuit with failed envelope
+    # 1. parse envelope; on ValidationError short-circuit with failed envelope.
+    #    Sensitive SecretStr fields encrypted with enc:v1: are decrypted here so
+    #    services see plaintext. Decryption failures map to INPUT_VALIDATION.
     try:
         envelope = parse_envelope_in(event, input_cls)
+        decrypted_payload = _decrypt_secret_fields(envelope.payload)
+        if decrypted_payload is not envelope.payload:
+            envelope = envelope.model_copy(update={"payload": decrypted_payload})
     except Exception as e:  # noqa: BLE001
         err = classify(e)
         out = EnvelopeOut[output_cls](  # type: ignore[valid-type]

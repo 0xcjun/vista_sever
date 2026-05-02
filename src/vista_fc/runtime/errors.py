@@ -50,6 +50,13 @@ def classify(exc: BaseException, *, trace_id: str | None = None) -> FcError:
     tid = trace_id or _new_trace_id()
     msg = str(exc) or type(exc).__name__
 
+    # Already-classified errors (e.g. raised by crypto.decrypt_field) pass through;
+    # only fill in a trace_id if the caller didn't set one.
+    if isinstance(exc, FcError):
+        if not exc.trace_id:
+            exc.trace_id = tid
+        return exc
+
     if isinstance(exc, ValidationError):
         return FcError("INPUT_VALIDATION", msg, retriable=False, trace_id=tid)
 

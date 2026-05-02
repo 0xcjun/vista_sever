@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from pydantic import BaseModel
+from nacl.public import PrivateKey
+from pydantic import BaseModel, SecretStr
 
 from handlers._base import run_handler
+from vista_fc.runtime.crypto import _load_sk, encrypt_field
 
 
 class _In(BaseModel):
@@ -309,6 +312,129 @@ def test_success_emits_duration_and_status_metrics(
     by_name = {m["metric_name"]: m for m in metrics}
     assert by_name["handler.status_total"]["metric_status"] == "succeeded"
     assert by_name["handler.duration_ms"]["metric_value"] >= 0
+
+
+@pytest.fixture
+def keypair_v1(monkeypatch: pytest.MonkeyPatch) -> tuple[str, str]:
+    sk = PrivateKey.generate()
+    sk_b64 = base64.b64encode(bytes(sk)).decode()
+    pk_b64 = base64.b64encode(bytes(sk.public_key)).decode()
+    monkeypatch.setenv("VISTA_FC_SEAL_SK_V1", sk_b64)
+    _load_sk.cache_clear()
+    yield sk_b64, pk_b64
+    _load_sk.cache_clear()
+
+
+class _SecretIn(BaseModel):
+    api_key: SecretStr | None = None
+    note: str = ""
+
+
+class _SecretOut(BaseModel):
+    revealed: str
+    note: str
+
+
+@patch("handlers._base.WorkspaceStorage")
+@patch("handlers._base.OssClient")
+def test_decrypts_secret_str_field_before_service(
+    mock_oss_cls: MagicMock,
+    mock_ws_cls: MagicMock,
+    keypair_v1: tuple[str, str],
+) -> None:
+    """Encrypted SecretStr value in payload reaches the service as plaintext."""
+    mock_oss_cls.from_env.return_value = MagicMock()
+    mock_ws_cls.return_value = MagicMock()
+    _, pk_b64 = keypair_v1
+
+    plaintext = "sk-ant-real-key"  # pragma: allowlist secret
+    ciphertext = encrypt_field(plaintext, pk_b64)
+    assert ciphertext.startswith("enc:v1:")
+
+    seen: dict[str, str] = {}
+
+    def service(*, tenant, payload: _SecretIn, workspace) -> _SecretOut:  # noqa: ARG001
+        assert payload.api_key is not None
+        seen["key"] = payload.api_key.get_secret_value()
+        return _SecretOut(revealed="ok", note=payload.note)
+
+    result = run_handler(
+        event={"tenant": _tenant_dict(), "payload": {"api_key": ciphertext, "note": "hi"}},
+        context=None,
+        input_cls=_SecretIn,
+        output_cls=_SecretOut,
+        service=service,
+        function_name="test-secret-fn",
+    )
+    assert result["status"] == "succeeded"
+    assert seen["key"] == plaintext
+
+
+@patch("handlers._base.WorkspaceStorage")
+@patch("handlers._base.OssClient")
+def test_plaintext_secret_str_passes_through(
+    mock_oss_cls: MagicMock,
+    mock_ws_cls: MagicMock,
+) -> None:
+    """SecretStr without enc:v1: prefix is not touched (backward compatible)."""
+    mock_oss_cls.from_env.return_value = MagicMock()
+    mock_ws_cls.return_value = MagicMock()
+
+    seen: dict[str, str] = {}
+
+    def service(*, tenant, payload: _SecretIn, workspace) -> _SecretOut:  # noqa: ARG001
+        assert payload.api_key is not None
+        seen["key"] = payload.api_key.get_secret_value()
+        return _SecretOut(revealed="ok", note="")
+
+    result = run_handler(
+        event={"tenant": _tenant_dict(), "payload": {"api_key": "sk-plain"}},
+        context=None,
+        input_cls=_SecretIn,
+        output_cls=_SecretOut,
+        service=service,
+        function_name="test-plain-fn",
+    )
+    assert result["status"] == "succeeded"
+    assert seen["key"] == "sk-plain"
+
+
+@patch("handlers._base.WorkspaceStorage")
+@patch("handlers._base.OssClient")
+def test_decryption_failure_maps_to_input_validation(
+    mock_oss_cls: MagicMock,
+    mock_ws_cls: MagicMock,
+    keypair_v1: tuple[str, str],
+) -> None:
+    """Tampered ciphertext: handler returns failed envelope with INPUT_VALIDATION; service not called."""
+    mock_oss_cls.from_env.return_value = MagicMock()
+    mock_ws_cls.return_value = MagicMock()
+    _, pk_b64 = keypair_v1
+
+    ct = encrypt_field("payload", pk_b64)
+    head, _, tail = ct.rpartition(":")
+    raw = bytearray(base64.b64decode(tail))
+    raw[-1] ^= 0x01
+    tampered = f"{head}:{base64.b64encode(bytes(raw)).decode()}"
+
+    calls = {"n": 0}
+
+    def service(**_kwargs) -> _SecretOut:
+        calls["n"] += 1
+        return _SecretOut(revealed="never", note="")
+
+    result = run_handler(
+        event={"tenant": _tenant_dict(), "payload": {"api_key": tampered}},
+        context=None,
+        input_cls=_SecretIn,
+        output_cls=_SecretOut,
+        service=service,
+        function_name="test-tampered-fn",
+    )
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "INPUT_VALIDATION"
+    assert result["error"]["retriable"] is False
+    assert calls["n"] == 0, "service must not run when decryption fails"
 
 
 @patch("handlers._base.WorkspaceStorage")
